@@ -29,148 +29,363 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom Premium CSS Injection
+import streamlit as st
+
+st.markdown("""
+<style>
+    /* 1. Target ALL text elements inside Inactive Tabs */
+    button[data-baseweb="tab"] p,
+    button[data-baseweb="tab"] div,
+    button[data-baseweb="tab"] span {
+        color: #e2e8f0 !important;              /* Crisp light-gray/white text */
+        font-weight: 500 !important;
+        font-size: 15px !important;
+    }
+
+    button[data-baseweb="tab"] {
+        background-color: transparent !important;
+    }
+
+    /* 2. Target ALL text elements inside Active/Selected Tab */
+    button[data-baseweb="tab"][aria-selected="true"] {
+        background-color: #ffffff !important;
+        border-radius: 6px 6px 0px 0px !important;
+    }
+
+    button[data-baseweb="tab"][aria-selected="true"] p,
+    button[data-baseweb="tab"][aria-selected="true"] div,
+    button[data-baseweb="tab"][aria-selected="true"] span {
+        color: #002b49 !important;              /* Dark navy text on white tab */
+        font-weight: 700 !important;
+    }
+
+    /* 3. Hover state for tabs */
+    button[data-baseweb="tab"]:hover p,
+    button[data-baseweb="tab"]:hover div,
+    button[data-baseweb="tab"]:hover span {
+        color: #ffffff !important;
+    }
+
+    /* 4. Sidebar Labels & Markdown text */
+    [data-testid="stSidebar"] label,
+    [data-testid="stSidebar"] label p,
+    [data-testid="stSidebar"] .stMarkdown p,
+    [data-testid="stSidebar"] h1, 
+    [data-testid="stSidebar"] h2, 
+    [data-testid="stSidebar"] h3 {
+        color: #ffffff !important;
+        font-weight: 600 !important;
+    }
+
+    /* 5. Input text fields & Dropdowns visibility */
+    [data-testid="stSidebar"] input {
+        color: #0f172a !important;
+        background-color: #ffffff !important;
+    }
+
+    [data-testid="stSidebar"] div[data-baseweb="select"] * {
+        color: #0f172a !important;
+    }
+
+    [data-testid="stSidebar"] div[data-baseweb="select"] {
+        background-color: #ffffff !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+# Custom Premium CSS Injection — Income Tax e-Filing portal inspired
+# (light surfaces, navy header/nav, single blue accent)
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap');
     
+    :root {
+        --bg-app: #eef2f6;
+        --bg-sidebar: #0b3d63;
+        --bg-card: #ffffff;
+        --border-soft: #d7e0ea;
+        --border-strong: #b7c4d3;
+        --text-primary: #1f2a37;
+        --text-secondary: #5b6b7c;
+        --accent: #0b5ea8;
+        --accent-hover: #0f6fc4;
+        --green: #1c7c3f;
+        --red: #c62828;
+        --amber: #b8720b;
+        --navy: #0b3d63;
+        --navy-dark: #082c48;
+    }
+
     /* Font overrides */
     html, body, [class*="css"] {
         font-family: 'Outfit', sans-serif;
     }
-    
+
     /* Global Background */
     .stApp {
-        background-color: #0b0f19;
-        color: #f3f4f6;
+        background-color: var(--bg-app);
+        color: var(--text-primary);
     }
-    
-    /* Sidebar styling */
+
+    .stApp, .stApp p, .stApp span, .stApp li, .stApp label,
+    .stMarkdown, .stMarkdown p, .stMarkdown li,
+    .stCaption, [data-testid="stMetricLabel"], [data-testid="stMetricValue"],
+    [data-testid="stMarkdownContainer"] {
+        color: var(--text-primary);
+    }
+
+    /* Sidebar styling (navy, like the portal's header/nav band) */
     [data-testid="stSidebar"] {
-        background-color: #0f1626;
-        border-right: 1px solid #1f2937;
+        background-color: var(--bg-sidebar);
+        border-right: 1px solid var(--navy-dark);
     }
-    
-    /* Sidebar text color */
-    [data-testid="stSidebar"] .stMarkdown {
-        color: #f3f4f6;
+
+    [data-testid="stSidebar"] * {
+        color: #ffffff !important;
     }
-    
-    /* Cards styling */
+
+    [data-testid="stSidebar"] .stMarkdown small,
+    [data-testid="stSidebar"] p {
+        color: #cfe0f0 !important;
+    }
+
+    [data-testid="stSidebar"] hr {
+        border-color: rgba(255,255,255,0.2) !important;
+    }
+
+    [data-testid="stSidebar"] .stSelectbox div[data-baseweb="select"] > div,
+    [data-testid="stSidebar"] .stTextInput input {
+        color: var(--text-primary) !important;
+    }
+
+    /* Select boxes / text inputs (closed state) */
+    .stSelectbox div[data-baseweb="select"] > div,
+    .stMultiSelect div[data-baseweb="select"] > div,
+    .stTextInput input,
+    .stTextArea textarea,
+    .stNumberInput input,
+    .stDateInput input {
+        background-color: #ffffff !important;
+        color: var(--text-primary) !important;
+        border: 1px solid var(--border-strong) !important;
+        border-radius: 6px !important;
+    }
+
+    /* Dropdown menu (renders in a portal, so target globally) */
+    div[data-baseweb="popover"] ul[role="listbox"],
+    div[data-baseweb="menu"] {
+        background-color: #ffffff !important;
+        border: 1px solid var(--border-soft) !important;
+        box-shadow: 0 4px 12px rgba(11, 61, 99, 0.15) !important;
+    }
+
+    div[data-baseweb="popover"] li,
+    div[data-baseweb="menu"] li {
+        color: var(--text-primary) !important;
+        background-color: transparent !important;
+    }
+
+    div[data-baseweb="popover"] li:hover,
+    div[data-baseweb="menu"] li:hover {
+        background-color: #eaf2fa !important;
+        color: var(--navy) !important;
+    }
+
+    /* Buttons */
+    .stButton button, .stFormSubmitButton button {
+        background: linear-gradient(135deg, #0b5ea8 0%, #084a86 100%);
+        color: #ffffff !important;
+        border: 1px solid #084a86;
+        border-radius: 6px;
+        font-weight: 600;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .stButton button:hover, .stFormSubmitButton button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 10px rgba(11, 94, 168, 0.35);
+        color: #ffffff !important;
+    }
+
+    .stButton button p {
+        color: #ffffff !important;
+    }
+
+    /* Dataframes / tables */
+    [data-testid="stDataFrame"] {
+        background-color: #ffffff;
+        border: 1px solid var(--border-soft);
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 1px 3px rgba(11, 61, 99, 0.08);
+    }
+
+    [data-testid="stDataFrame"] div {
+        color: var(--text-primary);
+    }
+
+    /* Cards styling — white cards with a navy accent bar,
+       similar to the portal's "Quick Links" / stat tiles */
     .metric-card {
-        background: linear-gradient(135deg, #161d30 0%, #111827 100%);
-        border: 1px solid #24304f;
-        border-radius: 12px;
+        background: #ffffff;
+        border: 1px solid var(--border-soft);
+        border-top: 3px solid var(--accent);
+        border-radius: 8px;
         padding: 20px;
         text-align: center;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-        transition: transform 0.2s, border-color 0.2s;
+        box-shadow: 0 1px 4px rgba(11, 61, 99, 0.08);
+        transition: transform 0.2s, box-shadow 0.2s;
     }
-    
+
     .metric-card:hover {
         transform: translateY(-2px);
-        border-color: #3b82f6;
+        box-shadow: 0 6px 14px rgba(11, 61, 99, 0.14);
     }
-    
+
     .metric-title {
-        font-size: 0.875rem;
-        color: #9ca3af;
+        font-size: 0.8rem;
+        color: var(--text-secondary);
         text-transform: uppercase;
         letter-spacing: 0.05em;
         margin-bottom: 8px;
-        font-weight: 500;
+        font-weight: 600;
     }
-    
+
     .metric-value {
         font-size: 1.75rem;
         font-weight: 700;
-        color: #ffffff;
+        color: var(--navy);
         margin-bottom: 4px;
     }
-    
+
     .metric-delta {
         font-size: 0.75rem;
         font-weight: 600;
     }
-    
+
     .delta-green {
-        color: #10b981;
+        color: #1c7c3f;
     }
-    
+
     .delta-red {
-        color: #f43f5e;
+        color: #c62828;
     }
-    
+
     .delta-amber {
-        color: #f59e0b;
+        color: #b8720b;
     }
-    
+
     /* Headers & Subheaders */
     h1, h2, h3 {
-        color: #ffffff !important;
+        color: var(--navy) !important;
         font-weight: 700 !important;
     }
-    
-    /* Custom tab styles */
+
+    /* Custom tab styles (navy pill bar like the portal's main nav) */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-        background-color: #0f1626;
+        gap: 6px;
+        background-color: var(--navy);
         padding: 6px;
         border-radius: 8px;
-        border: 1px solid #1f2937;
+        border: 1px solid var(--navy-dark);
     }
-    
+
     .stTabs [data-baseweb="tab"] {
         padding: 8px 16px;
-        color: #9ca3af;
+        color: #cfe0f0;
         border-radius: 6px;
         font-weight: 500;
         transition: background-color 0.2s, color 0.2s;
     }
-    
+
     .stTabs [data-baseweb="tab"]:hover {
         color: #ffffff;
-        background-color: #1e293b;
+        background-color: rgba(255,255,255,0.12);
     }
-    
+
     .stTabs [aria-selected="true"] {
-        color: #ffffff !important;
-        background-color: #2563eb !important;
+        color: var(--navy) !important;
+        background-color: #ffffff !important;
     }
-    
-    /* Accent Alerts */
+
+    /* Native Streamlit alerts */
+    [data-testid="stNotification"] {
+        border-radius: 6px !important;
+        border: 1px solid var(--border-soft) !important;
+    }
+
+    [data-testid="stNotification"] p, [data-testid="stNotification"] div {
+        color: var(--text-primary) !important;
+    }
+
+    .stAlert, .stAlert * {
+        color: var(--text-primary) !important;
+    }
+
+    /* Accent Alerts (like the portal's notice/ticker strip) */
     .custom-alert {
         padding: 16px;
-        border-radius: 8px;
+        border-radius: 6px;
         margin-bottom: 16px;
         border: 1px solid;
     }
-    
+
     .alert-success {
-        background-color: rgba(16, 185, 129, 0.1);
-        border-color: rgba(16, 185, 129, 0.2);
-        color: #34d399;
+        background-color: rgba(28, 124, 63, 0.08);
+        border-color: rgba(28, 124, 63, 0.3);
+        color: #1c7c3f;
     }
-    
+
     .alert-warning {
-        background-color: rgba(245, 158, 11, 0.1);
-        border-color: rgba(245, 158, 11, 0.2);
-        color: #fbbf24;
+        background-color: rgba(184, 114, 11, 0.08);
+        border-color: rgba(184, 114, 11, 0.3);
+        color: #8a5809;
     }
-    
+
     .alert-danger {
-        background-color: rgba(244, 63, 94, 0.1);
-        border-color: rgba(244, 63, 94, 0.2);
-        color: #f87171;
+        background-color: rgba(198, 40, 40, 0.08);
+        border-color: rgba(198, 40, 40, 0.3);
+        color: #c62828;
     }
+
+    /* Chat interface */
+    [data-testid="stChatMessage"] {
+        background-color: #ffffff;
+        border: 1px solid var(--border-soft);
+        border-radius: 8px;
+        color: var(--text-primary) !important;
+        box-shadow: 0 1px 3px rgba(11, 61, 99, 0.06);
+    }
+
+    [data-testid="stChatMessage"] p, [data-testid="stChatMessage"] li,
+    [data-testid="stChatMessage"] span {
+        color: var(--text-primary) !important;
+    }
+
+    [data-testid="stChatInput"] textarea {
+        background-color: #ffffff !important;
+        color: var(--text-primary) !important;
+        border: 1px solid var(--border-strong) !important;
+    }
+
+    /* Code blocks */
+    code, pre {
+        background-color: #eef2f6 !important;
+        color: #0b5ea8 !important;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-track { background: var(--bg-app); }
+    ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 6px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
 </style>
 """, unsafe_allow_html=True)
 
 # ----------------------------------------------------
 # SIDEBAR CREDENTIALS & OPTIONS
 # ----------------------------------------------------
-st.sidebar.markdown("<h2 style='text-align: center; color: #6366f1; font-weight: 800; margin-bottom: 4px;'>AI Finance Controller</h2>", unsafe_allow_html=True)
-st.sidebar.markdown("<p style='text-align: center; color: #9ca3af; font-size: 0.8rem; margin-top: 0;'>Multi-Source Reconciliation Agent</p>", unsafe_allow_html=True)
+st.sidebar.markdown("<h2 style='text-align: center; color: #ffffff; font-weight: 800; margin-bottom: 4px;'>AI Finance Controller</h2>", unsafe_allow_html=True)
+st.sidebar.markdown("<p style='text-align: center; color: #cfe0f0; font-size: 0.8rem; margin-top: 0;'>Multi-Source Reconciliation Agent</p>", unsafe_allow_html=True)
 st.sidebar.markdown("---")
 
 # Data selection option
@@ -198,7 +413,7 @@ st.sidebar.markdown("---")
 st.sidebar.markdown("### Core Engine Rules")
 st.sidebar.markdown("""
 - **Exact ID Matching**: Order ID lookups.
-- **Math Checks**: `Settled = Amt - Fee - GST`.
+- **Math Checks**: Settled = Amt - Fee - GST.
 - **Fee Rate Validation**: 2% Gateway, Flat 5 INR Payouts, T+0 Refunds.
 - **Settlement Window**: T+2 bank statement deposit verification.
 - **Duplicate Check**: Unique gateway ID check.
@@ -402,8 +617,14 @@ else:
 # ----------------------------------------------------
 # MAIN UI HEADER
 # ----------------------------------------------------
-st.markdown(f"<h1 style='margin-bottom: 2px; color: #ffffff;'>DAILY CLOSE — {dataset_option.split('(')[0].strip()}</h1>", unsafe_allow_html=True)
-st.markdown("<p style='color: #9ca3af; font-size: 1.05rem; margin-top: 0;'>Automated 3-way financial reconciliation ledger, settlements audit, and exception tracking.</p>", unsafe_allow_html=True)
+st.markdown(
+    "<div style='background-color:#0b3d63; padding:6px 14px; border-radius:6px; "
+    "color:#cfe0f0; font-size:0.8rem; margin-bottom:14px; display:inline-block;'>"
+    "🏠 Home &nbsp;›&nbsp; Reconciliation &nbsp;›&nbsp; Daily Close</div>",
+    unsafe_allow_html=True
+)
+st.markdown(f"<h1 style='margin-bottom: 2px; color: #0b3d63;'>DAILY CLOSE — {dataset_option.split('(')[0].strip()}</h1>", unsafe_allow_html=True)
+st.markdown("<p style='color: #5b6b7c; font-size: 1.05rem; margin-top: 0;'>Automated 3-way financial reconciliation ledger, settlements audit, and exception tracking.</p>", unsafe_allow_html=True)
 
 # ----------------------------------------------------
 # METRICS CARDS PANEL
@@ -482,10 +703,10 @@ st.markdown(f"""
 # MAIN TABS LAYOUT
 # ----------------------------------------------------
 tab1, tab2, tab3, tab4 = st.tabs([
-    "📂 Reconciled Gateway Ledger", 
-    "🚨 Unmatched Internal Orders", 
-    "🏦 Bank Settlement Audit",
-    "🤖 AI Financial Assistant"
+    "Reconciled Gateway Ledger",
+    "Unmatched Internal Orders",
+    "Bank Settlement Audit",
+    "AI Financial Assistant"
 ])
 
 # ----------------------------------------------------
