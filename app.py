@@ -411,7 +411,7 @@ gemini_api_key = st.sidebar.text_input(
 
 model_option = st.sidebar.selectbox(
     "Select Gemini Model",
-    ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp"],
+    ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"],
     index=0
 )
 
