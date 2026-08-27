@@ -1,6 +1,8 @@
 import unittest
 import pandas as pd
 from src.reconciliation import run_3way_reconciliation
+from src.forecaster import get_cash_forecast
+from src.tax_matcher import run_tax_audit
 
 class TestReconciliation(unittest.TestCase):
     
@@ -65,6 +67,35 @@ class TestReconciliation(unittest.TestCase):
         bank_18 = self.df_bank[self.df_bank['date'] == '18-08-2026'].iloc[0]
         self.assertEqual(bank_18['status'], 'MISSING_BANK_CREDIT')
         self.assertAlmostEqual(bank_18['difference'], -4407.40, places=2)
+    def test_cash_forecaster(self):
+        forecast_df = get_cash_forecast(self.df_tx, self.df_bank, days=7)
+        self.assertEqual(len(forecast_df), 7)
+        self.assertIn('date', forecast_df.columns)
+        self.assertIn('gross_collections', forecast_df.columns)
+        self.assertIn('net_inflow', forecast_df.columns)
+        self.assertIn('cumulative_cash', forecast_df.columns)
+        # Cumulative cash should reflect treasury change
+        self.assertNotEqual(forecast_df.iloc[-1]['cumulative_cash'], forecast_df.iloc[0]['cumulative_cash'])
+        
+    def test_tax_matcher(self):
+        tax_summary, tax_df = run_tax_audit(self.df_tx)
+        self.assertIn('total_audited_records', tax_summary)
+        self.assertIn('gst_anomalies_count', tax_summary)
+        self.assertIn('tds_anomalies_count', tax_summary)
+        self.assertIn('tax_compliance_pct', tax_summary)
+        
+        # Test simulated TDS discrepancies
+        # pay_95822412 should have TDS_UNDER_DEDUCTION
+        tx_958 = tax_df[tax_df['transaction_id'] == 'pay_95822412'].iloc[0]
+        self.assertEqual(tx_958['tax_status'], 'TDS_UNDER_DEDUCTION')
+        
+        # pay_81016525 should have TDS_OVER_DEDUCTION
+        tx_810 = tax_df[tax_df['transaction_id'] == 'pay_81016525'].iloc[0]
+        self.assertEqual(tx_810['tax_status'], 'TDS_OVER_DEDUCTION')
+        
+        # pay_24716857 should have MULTIPLE_TAX_ISSUES (GST mismatch + TDS mismatch)
+        tx_247 = tax_df[tax_df['transaction_id'] == 'pay_24716857'].iloc[0]
+        self.assertEqual(tx_247['tax_status'], 'MULTIPLE_TAX_ISSUES')
 
 if __name__ == '__main__':
     unittest.main()

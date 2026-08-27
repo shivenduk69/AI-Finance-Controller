@@ -6,9 +6,15 @@ import plotly.graph_objects as go
 import os
 from datetime import datetime, timedelta
 import google.generativeai as genai
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Import our reconciliation engine
 from src.reconciliation import run_3way_reconciliation
+from src.forecaster import get_cash_forecast
+from src.tax_matcher import run_tax_audit
 
 # Load internal orders lookup for the Audit Deep-Dive Tab
 base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -418,8 +424,10 @@ st.sidebar.markdown("""
 - **Settlement Window**: T+2 bank statement deposit verification.
 - **Duplicate Check**: Unique gateway ID check.
 """)
-
-st.sidebar.info("💡 Fallback Heuristic engine is active if no Gemini API Key is provided.")
+if gemini_api_key:
+    st.sidebar.success("🔑 Gemini API Active (Generative auditor enabled)")
+else:
+    st.sidebar.info("💡 Fallback Heuristic engine is active (local diagnostics only).")
 
 # ----------------------------------------------------
 # PREPARING RECONCILIATION DATA
@@ -614,6 +622,10 @@ if dataset_option == "Razorpay Synthetic Batch (60 records)":
 else:
     metrics, df_tx, df_unmatched, df_bank, bank_excs = get_august_25_example_data()
 
+# Run Cash Forecaster and Tax-line Matcher
+forecast_df = get_cash_forecast(df_tx, df_bank, days=7)
+tax_summary, tax_df = run_tax_audit(df_tx)
+
 # ----------------------------------------------------
 # MAIN UI HEADER
 # ----------------------------------------------------
@@ -702,10 +714,12 @@ st.markdown(f"""
 # ----------------------------------------------------
 # MAIN TABS LAYOUT
 # ----------------------------------------------------
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "Reconciled Gateway Ledger",
     "Unmatched Internal Orders",
     "Bank Settlement Audit",
+    "Forward Cash Forecaster",
+    "Tax-line Matcher",
     "AI Financial Assistant"
 ])
 
@@ -858,9 +872,130 @@ with tab3:
             st.error(f"● {exc_clean}")
 
 # ----------------------------------------------------
-# TAB 4: AI FINANCIAL ASSISTANT (CHAT)
+# TAB 4: FORWARD CASH FORECASTER
 # ----------------------------------------------------
 with tab4:
+    st.markdown("### 📈 Forward Cash Flow & Liquidity Forecaster")
+    st.markdown("Predictions of daily net settlements and cumulative treasury balances based on pending settlement queues (T+2) and historical averages (T+3 onwards):")
+    
+    # Metrics
+    fc_col1, fc_col2, fc_col3 = st.columns(3)
+    with fc_col1:
+        st.metric("Projected 7-Day Cumulative Balance", f"₹{forecast_df.iloc[-1]['cumulative_cash']:,.2f}", 
+                  delta=f"₹{forecast_df['net_inflow'].sum():+,.2f}")
+    with fc_col2:
+        st.metric("Next 2-Day Committed Inflows", f"₹{forecast_df.iloc[:2]['gross_collections'].sum():,.2f}", 
+                  help="Settlements expected from already captured customer transactions.")
+    with fc_col3:
+        st.metric("Proj. Average Daily Net Addition", f"₹{forecast_df['net_inflow'].mean():,.2f}")
+        
+    # Chart
+    st.markdown("#### Cash Flow Projection Trend")
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=forecast_df['date'],
+        y=forecast_df['net_inflow'],
+        name='Daily Net Cash Flow',
+        marker_color='#0b5ea8',
+        yaxis='y'
+    ))
+    fig.add_trace(go.Scatter(
+        x=forecast_df['date'],
+        y=forecast_df['cumulative_cash'],
+        name='Cumulative Treasury Cash',
+        line=dict(color='#c62828', width=3),
+        yaxis='y2'
+    ))
+    
+    fig.update_layout(
+        title="7-Day Treasury Forecast",
+        yaxis=dict(title="Daily Net Flow (INR)", side='left'),
+        yaxis2=dict(title="Cumulative Balance (INR)", side='right', overlaying='y', showgrid=False),
+        legend=dict(x=0.01, y=0.99),
+        template='plotly_white',
+        hovermode="x unified"
+    )
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Table breakdown
+    st.markdown("#### Forecast Ledger Table")
+    forecast_display = forecast_df.copy()
+    forecast_display.columns = [
+        'Forecast Date', 'Source Status', 'Gross Collections (₹)', 
+        'Refunds (₹)', 'Payouts (₹)', 'Est. Fees & GST (₹)', 
+        'Net Bank Cash Inflow (₹)', 'Cumulative Treasury Balance (₹)'
+    ]
+    st.dataframe(forecast_display, use_container_width=True, hide_index=True)
+
+# ----------------------------------------------------
+# TAB 5: TAX-LINE MATCHER
+# ----------------------------------------------------
+with tab5:
+    st.markdown("### 🏛️ Tax Line-Item Matcher & Auditor")
+    st.markdown("Automated auditing of GST tax liability on gateway fees and e-commerce Tax Deducted at Source (TDS) under Section 194-O:")
+    
+    # Metrics
+    tax_col1, tax_col2, tax_col3, tax_col4 = st.columns(4)
+    with tax_col1:
+        st.metric("Total Gateway GST Audited", f"₹{tax_summary['total_gst_collected_inr']:,.2f}")
+    with tax_col2:
+        st.metric("Total 194-O TDS Audited", f"₹{tax_summary['total_tds_deducted_inr']:,.2f}")
+    with tax_col3:
+        t_accuracy = tax_summary['tax_compliance_pct']
+        st.metric("Tax Compliance Rate", f"{t_accuracy}%")
+    with tax_col4:
+        st.metric("Tax Exceptions Count", f"{tax_summary['total_tax_discrepancies']}", 
+                  delta=f"{tax_summary['total_tax_discrepancies']} flag(s)", delta_color="inverse")
+        
+    # Dropdown Filter
+    tax_filter = st.selectbox(
+        "Filter Audited Tax Ledger by Discrepancy",
+        ["All Tax Audits", "GST Discrepancies Only", "TDS Anomalies Only", "Unreconciled Tax Issues (All Anomalies)", "Tax Reconciled OK"],
+        index=0
+    )
+    
+    if tax_filter == "GST Discrepancies Only":
+        display_tax_df = tax_df[tax_df['tax_status'].isin(['GST_MISMATCH', 'MULTIPLE_TAX_ISSUES'])]
+    elif tax_filter == "TDS Anomalies Only":
+        display_tax_df = tax_df[tax_df['tax_status'].isin(['TDS_UNDER_DEDUCTION', 'TDS_OVER_DEDUCTION', 'MULTIPLE_TAX_ISSUES'])]
+    elif tax_filter == "Unreconciled Tax Issues (All Anomalies)":
+        display_tax_df = tax_df[tax_df['tax_status'] != 'OK']
+    elif tax_filter == "Tax Reconciled OK":
+        display_tax_df = tax_df[tax_df['tax_status'] == 'OK']
+    else:
+        display_tax_df = tax_df
+        
+    tax_disp = display_tax_df.copy()
+    tax_disp.columns = [
+        'Transaction ID', 'Type', 'Amount (₹)', 'Gateway Fee (₹)', 
+        'Actual GST (₹)', 'Expected GST (₹)', 'GST Variance (₹)',
+        'Actual TDS (₹)', 'Expected TDS (₹)', 'TDS Variance (₹)',
+        'Tax Audit Status', 'Audit Logs'
+    ]
+    st.dataframe(tax_disp, use_container_width=True, hide_index=True)
+    
+    # Action button link to chat
+    st.markdown("---")
+    st.markdown("#### 🔍 Tax Exception Auditor Deep-Dive")
+    selected_tax_tx = st.selectbox(
+        "Select Tax Discrepancy Transaction ID to Audit",
+        tax_df[tax_df['tax_status'] != 'OK']['transaction_id'].tolist()
+    )
+    if selected_tax_tx:
+        tax_row_sel = tax_df[tax_df['transaction_id'] == selected_tax_tx].iloc[0]
+        st.error(f"**Tax Audit Flag: {tax_row_sel['tax_status']}**")
+        st.write(f"- **Audit Verdict**: {tax_row_sel['audit_comments']}")
+        st.write(f"- **GST Details**: Recorded: ₹{tax_row_sel['actual_gst']:.2f}, Expected (18% fee): ₹{tax_row_sel['expected_gst']:.2f} (Variance: ₹{tax_row_sel['gst_variance']:.2f})")
+        st.write(f"- **TDS Details**: Recorded (Simulated): ₹{tax_row_sel['actual_tds']:.2f}, Expected (1% Gross): ₹{tax_row_sel['expected_tds']:.2f} (Variance: ₹{tax_row_sel['tds_variance']:.2f})")
+        
+        if st.button(f"Ask Assistant to resolve tax exception {selected_tax_tx}", key="query_tax_btn"):
+            st.session_state.chat_query = f"Explain the tax and GST variances for transaction {selected_tax_tx}."
+            st.info("Query sent! Switch to the 'AI Financial Assistant' tab to view the answer.")
+
+# ----------------------------------------------------
+# TAB 6: AI FINANCIAL ASSISTANT (CHAT)
+# ----------------------------------------------------
+with tab6:
     st.markdown("### 🤖 Generative AI Finance Auditor")
     st.markdown("Ask natural language questions about the daily close, transaction status, or settlement discrepancies. The agent will analyze the calculated audit evidence and explain the results.")
 
@@ -879,11 +1014,25 @@ with tab4:
     - Expected pending settlement: INR {metrics['expected_next_2_days_inr']:,.2f}
     - Needs Review (Exceptions) count: {metrics['needs_review_count']}
     
+    TAX COMPLIANCE SUMMARY:
+    - Total GST Audited: INR {tax_summary['total_gst_collected_inr']:,.2f}
+    - Total 194-O TDS Audited: INR {tax_summary['total_tds_deducted_inr']:,.2f}
+    - Tax Compliance Rate: {tax_summary['tax_compliance_pct']}%
+    - Tax Anomalies Count: {tax_summary['total_tax_discrepancies']} (GST issues: {tax_summary['gst_anomalies_count']}, TDS issues: {tax_summary['tds_anomalies_count']})
+    
+    CASH FORECAST SUMMARY (7-Day):
+    - Projected 7-Day Net Cash Flow Addition: INR {forecast_df['net_inflow'].sum():,.2f}
+    - Projected Ending Treasury Cash: INR {forecast_df.iloc[-1]['cumulative_cash']:,.2f}
+    - Next 2-Day Committed Inflows: INR {forecast_df.iloc[:2]['gross_collections'].sum():,.2f}
+    
     UNMATCHED COMPLETED ORDERS:
     {df_unmatched.to_string(columns=['order_id', 'amount_inr', 'status', 'calculated_exceptions'], index=False)}
     
     BANK STATEMENT EXCEPTIONS:
     {chr(10).join(['- ' + e.replace('₹', 'INR') for e in bank_excs]) if len(bank_excs) > 0 else 'None'}
+    
+    DETAILED TAX EXCEPTIONS (Needs Review):
+    {tax_df[tax_df['tax_status'] != 'OK'].to_string(columns=['transaction_id', 'type', 'amount_inr', 'tax_status', 'audit_comments'], index=False)}
     
     DETAILED GATEWAY EXCEPTIONS (Needs Review):
     """
@@ -900,6 +1049,35 @@ with tab4:
     def local_heuristic_engine(query):
         query_lower = query.lower()
         
+        # Match cash forecasting queries
+        if "forecast" in query_lower or "cash flow" in query_lower or "liquidity" in query_lower or "future" in query_lower:
+            proj_sum = forecast_df.to_string(columns=['date', 'status', 'gross_collections', 'refunds', 'payouts', 'net_inflow', 'cumulative_cash'], index=False)
+            return f"""### 7-Day Forward Cash Forecast Report
+The projected cumulative bank cash balance starting from the current bank statement balance will end at **INR {forecast_df.iloc[-1]['cumulative_cash']:,.2f}** in 7 days.
+
+**Daily Projection Details**:
+```text
+{proj_sum}
+```
+- **Next 2-Day Committed Inflows**: INR {forecast_df.iloc[:2]['gross_collections'].sum():,.2f}
+- **Projected Net Cash Addition (7 days)**: INR {forecast_df['net_inflow'].sum():,.2f}
+"""
+
+        # Match tax queries
+        if "tax" in query_lower or "gst" in query_lower or "tds" in query_lower or "withholding" in query_lower:
+            tax_excs = tax_df[tax_df['tax_status'] != 'OK']
+            exc_str = ""
+            for idx, r in tax_excs.iterrows():
+                exc_str += f"- **TX `{r['transaction_id']}`** ({r['tax_status']}): {r['audit_comments']}\n"
+            return f"""### Tax Compliance & Matcher Report
+- **GST Compliance**: Audited GST on gateway fees. {tax_summary['gst_anomalies_count']} anomalies flagged.
+- **TDS Section 194-O**: Checked e-commerce TDS deductions (1% expected). {tax_summary['tds_anomalies_count']} anomalies flagged.
+- **Overall Tax Compliance Rate**: **{tax_summary['tax_compliance_pct']}%**
+
+**Identified Tax Discrepancies**:
+{exc_str if len(tax_excs) > 0 else "All tax lines are 100% compliant."}
+"""
+
         # Match detailed Close summary
         if "close" in query_lower or "summary" in query_lower or "report" in query_lower:
             ans = f"""### Heuristic Financial Close Summary Report
@@ -917,6 +1095,7 @@ with tab4:
 3. **Fee Mismatches**: {len(df_tx[df_tx['calculated_exceptions'].apply(lambda x: any('FEE_MISMATCH' in e for e in x))])} payments with fee rates differing from the default 2% rate.
 4. **Internal Order Orphans**: {len(df_unmatched)} orders completed in database without gateway payments.
 5. **Bank Settlement Issues**: {len(bank_excs)} daily settlement batches with errors (e.g. missing credits or amount mismatch).
+6. **Tax Line Discrepancies**: {tax_summary['total_tax_discrepancies']} anomalies flagged (GST/TDS).
 """
             return ans
             
@@ -925,10 +1104,13 @@ with tab4:
             tx_id = row['transaction_id']
             if tx_id.lower() in query_lower:
                 clean_excs = [e.replace('₹', 'INR') for e in row['calculated_exceptions']]
-                if len(clean_excs) == 0:
+                tax_row = tax_df[tax_df['transaction_id'] == tx_id].iloc[0]
+                tax_info = f"\n- **Tax Status**: {tax_row['tax_status']} (Comments: {tax_row['audit_comments']})"
+                
+                if len(clean_excs) == 0 and tax_row['tax_status'] == 'OK':
                     return f"### Transaction {tx_id} Audit Report\n- **Status**: Reconciled (`AUTO_RESOLVED`)\n- **Math Check**: Passed (Settled: INR {row['settled_amount_inr']:,.2f} matches `Amount - Fee - GST`)\n- **Order Matching**: Reconciled to `{row['order_id']}`\n- **Bank Matching**: Reconciled to settlement date `{row['expected_settlement_date']}`"
                 else:
-                    return f"### Transaction {tx_id} Exception Audit Report\n- **Status**: Needs Review (`NEEDS_REVIEW`)\n- **Confidence**: {row['confidence_score']*100:.0f}%\n- **Gateway Details**: Amount INR {row['amount_inr']:,.2f}, Fee: INR {row['fee_inr']:,.2f}, GST: INR {row['tax_inr']:,.2f}, Settled: INR {row['settled_amount_inr']:,.2f}\n- **Audit Flags**: `{clean_excs}`"
+                    return f"### Transaction {tx_id} Exception Audit Report\n- **Status**: Needs Review (`NEEDS_REVIEW`)\n- **Confidence**: {row['confidence_score']*100:.0f}%\n- **Gateway Details**: Amount INR {row['amount_inr']:,.2f}, Fee: INR {row['fee_inr']:,.2f}, GST: INR {row['tax_inr']:,.2f}, Settled: INR {row['settled_amount_inr']:,.2f}\n- **Audit Flags**: `{clean_excs}`{tax_info}"
                     
         # Match specific Order ID
         for idx, row in df_unmatched.iterrows():
@@ -942,7 +1124,6 @@ with tab4:
             
         if "august 18" in query_lower or "18-08" in query_lower:
             return f"### Bank Credit Missing (18-08-2026)\n- **Expected Credit**: INR 4,407.40\n- **Actual Bank Credit**: INR 0.00\n- **Difference**: INR -4,407.40\n- **Audit Flag**: Razorpay processed the settlement batch, but the deposit is omitted from the bank statement."
-            
         return "Local Heuristic: No direct keyword match found. To perform full generative conversation across all transactions, please enter a **Gemini API Key** in the sidebar."
 
     # Chat UI container
