@@ -97,5 +97,63 @@ class TestReconciliation(unittest.TestCase):
         tx_247 = tax_df[tax_df['transaction_id'] == 'pay_24716857'].iloc[0]
         self.assertEqual(tx_247['tax_status'], 'MULTIPLE_TAX_ISSUES')
 
+    def test_configurable_tds(self):
+        # 1. Test formula correctness on default run
+        tax_summary, tax_df = run_tax_audit(self.df_tx)
+        
+        # Check that the new columns are present
+        self.assertIn('recipient_type', tax_df.columns)
+        self.assertIn('tds_applicable', tax_df.columns)
+        self.assertIn('tds_rate', tax_df.columns)
+        self.assertIn('tds_amount', tax_df.columns)
+        
+        # Verify formula: ExpectedTDS = Amount * Rate if tds_applicable else 0
+        for idx, row in tax_df.iterrows():
+            if row['tds_applicable']:
+                self.assertAlmostEqual(row['expected_tds'], round(row['amount_inr'] * row['tds_rate'], 2), places=2)
+            else:
+                self.assertEqual(row['expected_tds'], 0.00)
+                
+        # 2. Test custom configuration changes computed ExpectedTDS
+        custom_config = {
+            'PAYMENT': {
+                'Individual': {'applicable': True, 'rate': 0.05},  # Set to 5% rate
+                'Company': {'applicable': False, 'rate': 0.00},   # Disable TDS for Company
+                'Non-Resident': {'applicable': True, 'rate': 0.10} # Enable for Non-Resident at 10%
+            },
+            'PAYOUT': {
+                'Individual': {'applicable': False, 'rate': 0.00},
+                'Company': {'applicable': False, 'rate': 0.00},
+                'Non-Resident': {'applicable': False, 'rate': 0.00}
+            },
+            'REFUND': {
+                'Individual': {'applicable': False, 'rate': 0.00},
+                'Company': {'applicable': False, 'rate': 0.00},
+                'Non-Resident': {'applicable': False, 'rate': 0.00}
+            }
+        }
+        
+        _, custom_tax_df = run_tax_audit(self.df_tx, tds_config=custom_config)
+        
+        for idx, row in custom_tax_df.iterrows():
+            rec_type = row['recipient_type']
+            tx_type = row['type']
+            
+            if tx_type == 'PAYMENT':
+                if rec_type == 'Individual':
+                    self.assertTrue(row['tds_applicable'])
+                    self.assertEqual(row['tds_rate'], 0.05)
+                    self.assertAlmostEqual(row['expected_tds'], round(row['amount_inr'] * 0.05, 2), places=2)
+                elif rec_type == 'Company':
+                    self.assertFalse(row['tds_applicable'])
+                    self.assertEqual(row['expected_tds'], 0.00)
+                elif rec_type == 'Non-Resident':
+                    self.assertTrue(row['tds_applicable'])
+                    self.assertEqual(row['tds_rate'], 0.10)
+                    self.assertAlmostEqual(row['expected_tds'], round(row['amount_inr'] * 0.10, 2), places=2)
+            else:
+                self.assertFalse(row['tds_applicable'])
+                self.assertEqual(row['expected_tds'], 0.00)
+
 if __name__ == '__main__':
     unittest.main()

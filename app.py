@@ -416,6 +416,38 @@ model_option = st.sidebar.selectbox(
 )
 
 st.sidebar.markdown("---")
+st.sidebar.markdown("### 🏛️ TDS Policy Configurator")
+with st.sidebar.expander("Adjust TDS Rates & Rules", expanded=False):
+    st.markdown("**Payment TDS Rules**")
+    tds_app_ind = st.checkbox("Resident Individual", value=True, help="Deduct TDS for resident individuals (Sec 194-O)")
+    tds_rate_ind = st.number_input("Individual TDS Rate (%)", min_value=0.0, max_value=10.0, value=1.0, step=0.1) / 100.0
+    
+    tds_app_corp = st.checkbox("Resident Company", value=True, help="Deduct TDS for companies")
+    tds_rate_corp = st.number_input("Company TDS Rate (%)", min_value=0.0, max_value=10.0, value=2.0, step=0.1) / 100.0
+    
+    tds_app_nres = st.checkbox("Non-Resident Entity", value=False, help="Deduct TDS for non-resident entities")
+    tds_rate_nres = st.number_input("Non-Res TDS Rate (%)", min_value=0.0, max_value=10.0, value=0.0, step=0.1) / 100.0
+
+# Build tds_config from these widgets
+ui_tds_config = {
+    'PAYMENT': {
+        'Individual': {'applicable': tds_app_ind, 'rate': tds_rate_ind},
+        'Company': {'applicable': tds_app_corp, 'rate': tds_rate_corp},
+        'Non-Resident': {'applicable': tds_app_nres, 'rate': tds_rate_nres}
+    },
+    'PAYOUT': {
+        'Individual': {'applicable': False, 'rate': 0.00},
+        'Company': {'applicable': False, 'rate': 0.00},
+        'Non-Resident': {'applicable': False, 'rate': 0.00}
+    },
+    'REFUND': {
+        'Individual': {'applicable': False, 'rate': 0.00},
+        'Company': {'applicable': False, 'rate': 0.00},
+        'Non-Resident': {'applicable': False, 'rate': 0.00}
+    }
+}
+
+st.sidebar.markdown("---")
 st.sidebar.markdown("### Core Engine Rules")
 st.sidebar.markdown("""
 - **Exact ID Matching**: Order ID lookups.
@@ -624,7 +656,7 @@ else:
 
 # Run Cash Forecaster and Tax-line Matcher
 forecast_df = get_cash_forecast(df_tx, df_bank, days=7)
-tax_summary, tax_df = run_tax_audit(df_tx)
+tax_summary, tax_df = run_tax_audit(df_tx, tds_config=ui_tds_config)
 
 # ----------------------------------------------------
 # MAIN UI HEADER
@@ -965,12 +997,17 @@ with tab5:
     else:
         display_tax_df = tax_df
         
-    tax_disp = display_tax_df.copy()
+    cols_to_display = [
+        'transaction_id', 'type', 'recipient_type', 'tds_applicable', 'tds_rate',
+        'amount_inr', 'fee_inr', 'actual_gst', 'expected_gst', 'gst_variance',
+        'actual_tds', 'expected_tds', 'tds_variance', 'tax_status', 'audit_comments'
+    ]
+    tax_disp = display_tax_df[cols_to_display].copy()
+    tax_disp['tds_rate'] = tax_disp['tds_rate'] * 100.0
     tax_disp.columns = [
-        'Transaction ID', 'Type', 'Amount (₹)', 'Gateway Fee (₹)', 
-        'Actual GST (₹)', 'Expected GST (₹)', 'GST Variance (₹)',
-        'Actual TDS (₹)', 'Expected TDS (₹)', 'TDS Variance (₹)',
-        'Tax Audit Status', 'Audit Logs'
+        'Transaction ID', 'Type', 'Recipient Type', 'TDS Applicable', 'TDS Rate (%)',
+        'Amount (₹)', 'Gateway Fee (₹)', 'Actual GST (₹)', 'Expected GST (₹)', 'GST Variance (₹)',
+        'Actual TDS (₹)', 'Expected TDS (₹)', 'TDS Variance (₹)', 'Tax Audit Status', 'Audit Logs'
     ]
     st.dataframe(tax_disp, use_container_width=True, hide_index=True)
     
@@ -985,8 +1022,9 @@ with tab5:
         tax_row_sel = tax_df[tax_df['transaction_id'] == selected_tax_tx].iloc[0]
         st.error(f"**Tax Audit Flag: {tax_row_sel['tax_status']}**")
         st.write(f"- **Audit Verdict**: {tax_row_sel['audit_comments']}")
+        st.write(f"- **Recipient Profile**: {tax_row_sel['recipient_type']} (TDS Applicable: {'Yes' if tax_row_sel['tds_applicable'] else 'No'}, Rate: {tax_row_sel['tds_rate']*100:.1f}%)")
         st.write(f"- **GST Details**: Recorded: ₹{tax_row_sel['actual_gst']:.2f}, Expected (18% fee): ₹{tax_row_sel['expected_gst']:.2f} (Variance: ₹{tax_row_sel['gst_variance']:.2f})")
-        st.write(f"- **TDS Details**: Recorded (Simulated): ₹{tax_row_sel['actual_tds']:.2f}, Expected (1% Gross): ₹{tax_row_sel['expected_tds']:.2f} (Variance: ₹{tax_row_sel['tds_variance']:.2f})")
+        st.write(f"- **TDS Details**: Recorded (Simulated): ₹{tax_row_sel['actual_tds']:.2f}, Expected: ₹{tax_row_sel['expected_tds']:.2f} (Variance: ₹{tax_row_sel['tds_variance']:.2f})")
         
         if st.button(f"Ask Assistant to resolve tax exception {selected_tax_tx}", key="query_tax_btn"):
             st.session_state.chat_query = f"Explain the tax and GST variances for transaction {selected_tax_tx}."
