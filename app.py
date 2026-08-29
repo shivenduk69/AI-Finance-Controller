@@ -238,6 +238,8 @@ if "chat_query" not in st.session_state:
     st.session_state.chat_query = None
 if "prompt_default" not in st.session_state:
     st.session_state.prompt_default = ""
+if "current_indexed_batch" not in st.session_state:
+    st.session_state.current_indexed_batch = ""
 
 # Admin panel system rules config state
 if "sys_gateway_fee" not in st.session_state:
@@ -249,11 +251,29 @@ if "sys_payout_fee" not in st.session_state:
 if "sys_settlement_delay" not in st.session_state:
     st.session_state.sys_settlement_delay = "T+2 Days"
 if "sys_gemini_model" not in st.session_state:
-    st.session_state.sys_gemini_model = "gemini-3.5-flash"
+    st.session_state.sys_gemini_model = "gemini-3.6-flash"
 if "sys_confidence_threshold" not in st.session_state:
     st.session_state.sys_confidence_threshold = 80
 if "sys_gemini_api_key" not in st.session_state:
     st.session_state.sys_gemini_api_key = os.environ.get("GEMINI_API_KEY", "")
+if "sys_system_prompt_template" not in st.session_state:
+    st.session_state.sys_system_prompt_template = """You are the AI Finance Controller assistant.
+Your goal is to answer the user's question using both transaction evidence and the provided financial documents/context.
+
+{evidence_prompt}
+
+DOCUMENTATION CONTEXT (Policy rules and Tax specifications retrieved from files):
+{retrieved_context}
+
+{history_context}
+
+Rules:
+1. Prefer information from the retrieved documents.
+2. Do not invent financial facts.
+3. If the documents do not contain the answer, clearly say that the information was not found in the available documents.
+4. Distinguish between documented facts and your own reasoning.
+5. For financial calculations, show the relevant calculation.
+6. When possible, mention which document/source supports the answer."""
 
 # TDS config
 if "sys_tds_config" not in st.session_state:
@@ -281,11 +301,15 @@ if "page" in query_params:
     st.session_state.page = query_params["page"]
 if "audit_tx" in query_params:
     st.session_state.audit_tx = query_params["audit_tx"]
+if "explain_tx" in query_params:
+    st.session_state.explain_tx = query_params["explain_tx"]
+if "admin_page" in query_params:
+    st.session_state.admin_page = query_params["admin_page"]
 
 # Set page config
 st.set_page_config(
     page_title="AI Finance Controller - Dashboard",
-    page_icon="💸",
+    page_icon="logo.png",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -341,9 +365,9 @@ st.markdown("""
     
     /* Sidebar Overhaul */
     [data-testid="stSidebar"] {
-        background-color: #202a3b !important;
+        background-color: #161f30 !important;
         border-right: 1px solid rgba(255, 255, 255, 0.05) !important;
-        width: 290px !important;
+        width: 260px !important;
     }
     
     [data-testid="stSidebarUserContent"] {
@@ -361,6 +385,18 @@ st.markdown("""
     .sidebar-logo {
         padding: 0 24px 15px 24px;
         margin-bottom: 5px;
+    }
+    
+    /* Sidebar Section Headers */
+    .sidebar-section-header {
+        color: #6B7C93 !important;
+        font-size: 11px !important;
+        font-weight: 700 !important;
+        letter-spacing: 1px !important;
+        margin-top: 16px !important;
+        margin-bottom: 4px !important;
+        padding-left: 24px !important;
+        text-transform: uppercase !important;
     }
     
     /* Sidebar Nav Buttons Styling */
@@ -384,13 +420,13 @@ st.markdown("""
     section[data-testid="stSidebar"] button[data-testid="baseButton-secondary"],
     section[data-testid="stSidebar"] button {
         background-color: transparent !important;
-        color: #94A3B8 !important;
+        color: #9AA9BD !important;
         border: none !important;
         text-align: left !important;
         justify-content: flex-start !important;
         padding: 11px 24px !important;
         border-radius: 0px !important;
-        font-size: 14px !important;
+        font-size: 14.5px !important;
         font-weight: 500 !important;
         width: 100% !important;
         border-left: 3px solid transparent !important;
@@ -410,10 +446,16 @@ st.markdown("""
     
     section[data-testid="stSidebar"] .sidebar-btn-active div.stButton > button,
     section[data-testid="stSidebar"] .sidebar-btn-active button {
-        background-color: #242e3e !important;
+        background-color: #212c40 !important;
         color: #FFFFFF !important;
         font-weight: 600 !important;
         border-left: 3px solid #3B82F6 !important;
+    }
+    
+    /* Color the first character (the Unicode symbol icon) blue when active */
+    section[data-testid="stSidebar"] .sidebar-btn-active div.stButton > button::first-letter,
+    section[data-testid="stSidebar"] .sidebar-btn-active button::first-letter {
+        color: #3B82F6 !important;
     }
     
     /* Ensure all text inside the buttons inherits active/hover colors */
@@ -421,7 +463,7 @@ st.markdown("""
     section[data-testid="stSidebar"] button p,
     section[data-testid="stSidebar"] button span {
         color: inherit !important;
-        font-size: 14px !important;
+        font-size: 14.5px !important;
         font-weight: inherit !important;
     }
     
@@ -478,10 +520,11 @@ st.markdown("""
         font-size: 1.2rem;
         color: var(--text-sec);
         cursor: pointer;
-        transition: color 0.2s;
+        transition: color 0.2s, transform 0.2s;
     }
     .header-icon:hover {
         color: var(--primary);
+        transform: scale(1.1);
     }
     
     .header-avatar {
@@ -495,6 +538,12 @@ st.markdown("""
         display: flex;
         align-items: center;
         justify-content: center;
+        transition: transform 0.2s;
+        cursor: pointer;
+    }
+    .header-avatar:hover {
+        transform: scale(1.1);
+        background-color: #083D63;
     }
     
     .header-divider {
@@ -983,6 +1032,160 @@ def clean_html(html_str):
     """Strips all leading and trailing whitespace from each line to prevent Markdown code block triggers."""
     return "\n".join([line.strip() for line in html_str.split("\n")])
 
+def generate_ai_response(user_query):
+    # Retrieve matching segments from .md and .pdf policy files
+    api_key = st.session_state.sys_gemini_api_key
+    
+    # 1. semantic search / RAG retrieval
+    retrieved_chunks = []
+    if api_key:
+        try:
+            from src.rag_engine import retrieve_relevant_context_with_sources
+            retrieved_chunks = retrieve_relevant_context_with_sources(user_query, api_key, top_n=3)
+        except Exception as e:
+            print(f"RAG retrieval error: {str(e)}")
+            
+    # Format retrieved context for prompt
+    if retrieved_chunks:
+        retrieved_context = "\n\n".join([f"Source: {c['file_name']} (Chunk {c['chunk_index']}):\n{c['text_content']}" for c in retrieved_chunks])
+    else:
+        retrieved_context = "No document context found."
+
+    # Construct conversation history
+    history_context = ""
+    if len(st.session_state.messages) > 1:
+        history_context = "\nCONVERSATION HISTORY (Previous turns in this thread):\n"
+        for msg in st.session_state.messages[:-1]:
+            role_label = "USER" if msg['role'] == 'user' else "ASSISTANT"
+            # Strip sources block from previous turns so context prompt stays clean
+            content_clean = msg['content'].split("---")[0].strip()
+            history_context += f"- {role_label}: {content_clean}\n"
+
+    # Core database context prompt (daily close metrics)
+    evidence_prompt = f"""
+    DAILY CLOSE DATA SUMMARY:
+    - Total Payments Processed: {metrics.get('total_payments_processed', 0)}
+    - Auto-match Accuracy: {metrics.get('auto_match_accuracy_pct', 0.0)}%
+    - Gross Customer Collections: INR {metrics.get('gross_collections_inr', 0.0):,.2f}
+    - Refunds Processed: INR {metrics.get('refunds_inr', 0.0):,.2f}
+    - Gateway Fees + GST: INR {metrics.get('fees_gst_inr', 0.0):,.2f}
+    - Settled to Bank: INR {metrics.get('settled_to_bank_inr', 0.0):,.2f}
+    - Expected pending settlement: INR {metrics.get('expected_next_2_days_inr', 0.0):,.2f}
+    - Needs Review (Exceptions) count: {metrics.get('needs_review_count', 0)}
+    """
+
+    # Grounding System Instructions using the editable template
+    full_system_context = st.session_state.sys_system_prompt_template.format(
+        evidence_prompt=evidence_prompt,
+        retrieved_context=retrieved_context,
+        history_context=history_context
+    )
+
+    # Generate LLM response
+    answer = ""
+    if api_key:
+        try:
+            import google.generativeai as genai
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel(st.session_state.sys_gemini_model)
+            full_prompt = f"{full_system_context}\n\nUser Question: {user_query}\n\nAnswer:"
+            response = model.generate_content(full_prompt)
+            answer = response.text
+        except Exception as e:
+            answer = f"Gemini connection unavailable.\n\nPlease verify your API configuration.\n\n[Open AI Configuration](?page=settings)"
+    else:
+        # Fallback to local heuristic engine
+        from app import local_heuristic_engine
+        answer = local_heuristic_engine(user_query)
+
+    # 3. Format RAG Metadata & Sources section at the bottom of the answer
+    # Check if Gemini was unavailable
+    if "Gemini connection unavailable" in answer:
+        pass
+    elif "No relevant information found" in answer or "information was not found in the available documents" in answer:
+        # Grounded failure message
+        answer = """No relevant information found
+
+I could not find sufficient information in the available knowledge base to answer this question.
+
+[View Knowledge Base](?page=settings)"""
+    elif retrieved_chunks:
+        # Deduplicate sources by filename
+        unique_docs = {}
+        for c in retrieved_chunks:
+            fn = c['file_name']
+            if fn not in unique_docs:
+                unique_docs[fn] = []
+            unique_docs[fn].append(c['chunk_index'])
+            
+        sources_md = "\n\n---\n✦ **RAG-powered response**\n"
+        sources_md += f"*{len(retrieved_chunks)} relevant chunks retrieved*\n\n"
+        sources_md += "**Sources used:**\n"
+        for i, (doc, chunks) in enumerate(unique_docs.items(), 1):
+            chunks_str = ", ".join([f"Page {chk+1}" if doc.endswith('.pdf') else f"Chunk {chk}" for chk in chunks])
+            sources_md += f"{i}. {doc}\n   {chunks_str}\n"
+            
+        sources_md += "\n<details>\n<summary><b>[ View Sources ]</b></summary>\n\n"
+        for c in retrieved_chunks:
+            # Strip filename prefix for cleaner preview
+            chunk_display = c['text_content'].replace(f"[{c['file_name']}] ", "")
+            sources_md += f"**{c['file_name']} (Chunk {c['chunk_index']}):**\n"
+            sources_md += f"> {chunk_display}\n\n"
+        sources_md += "</details>"
+        
+        answer += sources_md
+
+    st.session_state.messages.append({"role": "assistant", "content": answer})
+    save_chat_message(st.session_state.session_id, "assistant", answer)
+
+def export_data_for_rag(df_tx, df_orders, df_bank):
+    """Generates structured Markdown files for active database records and indexes them into the RAG vector store."""
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        docs_dir = os.path.join(base_dir, "documents")
+        os.makedirs(docs_dir, exist_ok=True)
+        
+        # 1. Export Internal Orders Data
+        orders_path = os.path.join(docs_dir, "07_internal_orders_data.md")
+        orders_md = "# Internal Orders Database Records\n\n"
+        orders_md += "| Order ID | Amount (INR) | Status | Created At | Customer Email |\n"
+        orders_md += "|---|---|---|---|---|\n"
+        for _, row in df_orders.iterrows():
+            orders_md += f"| {row['order_id']} | {row['amount_inr']:.2f} | {row['status']} | {row['created_at']} | {row['customer_email']} |\n"
+            
+        with open(orders_path, "w", encoding="utf-8") as f:
+            f.write(orders_md)
+            
+        # 2. Export Razorpay Transactions Data
+        txs_path = os.path.join(docs_dir, "08_razorpay_transactions_data.md")
+        txs_md = "# Razorpay Gateway Transactions Database Records\n\n"
+        txs_md += "| Transaction ID | Order ID | Type | Status | Method | Amount (INR) | Fee (INR) | GST (INR) | Settled (INR) | Expected Settlement Date | Timestamp | Resolution Status |\n"
+        txs_md += "|---|---|---|---|---|---|---|---|---|---|---|---|\n"
+        for _, row in df_tx.iterrows():
+            txs_md += f"| {row['transaction_id']} | {row['order_id']} | {row['type']} | {row['status']} | {row['method']} | {row['amount_inr']:.2f} | {row['fee_inr']:.2f} | {row['tax_inr']:.2f} | {row['settled_amount_inr']:.2f} | {row['expected_settlement_date']} | {row['timestamp']} | {row['resolution_status']} |\n"
+            
+        with open(txs_path, "w", encoding="utf-8") as f:
+            f.write(txs_md)
+            
+        # 3. Export Bank Statements Data
+        bank_path = os.path.join(docs_dir, "09_bank_statements_data.md")
+        bank_md = "# Bank Statements Database Records\n\n"
+        bank_md += "| Value Date | Expected Amount (INR) | Actual Amount (INR) | Difference (INR) | Bank Reference | Status |\n"
+        bank_md += "|---|---|---|---|---|---|\n"
+        for _, row in df_bank.iterrows():
+            expected_val = row.get('expected_amount_inr', row['amount_inr'])
+            difference_val = row.get('difference', 0.0)
+            bank_md += f"| {row['date']} | {expected_val:.2f} | {row['amount_inr']:.2f} | {difference_val:.2f} | {row['bank_reference']} | {row['status']} |\n"
+            
+        with open(bank_path, "w", encoding="utf-8") as f:
+            f.write(bank_md)
+            
+        # Re-index newly generated Markdown files
+        from src.rag_engine import build_document_index
+        build_document_index(st.session_state.sys_gemini_api_key, force_reindex=True)
+    except Exception as e:
+        print(f"Error exporting data for RAG: {str(e)}")
+
 # ----------------------------------------------------
 # CUSTOM SIDEBAR NAVIGATION RENDERER
 # ----------------------------------------------------
@@ -1003,56 +1206,92 @@ def render_sidebar_item(label, page_name, icon="", badge=""):
     st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
 # Render Sidebar Title & Subtitle
-st.sidebar.markdown("""
+# Base64 encode logo.png for sidebar rendering
+import base64
+base_dir = os.path.dirname(os.path.abspath(__file__))
+logo_path = os.path.join(base_dir, "logo.png")
+logo_base64 = ""
+if os.path.exists(logo_path):
+    with open(logo_path, "rb") as logo_file:
+        logo_base64 = base64.b64encode(logo_file.read()).decode("utf-8")
+
+# Render Sidebar Title & Subtitle using the brand logo
+st.sidebar.markdown(clean_html(f"""
 <div class="sidebar-logo">
-    <div style="display: flex; align-items: center; gap: 10px;">
-        <div style="background-color: #3b82f6; border-radius: 4px; padding: 6px; display: flex; align-items: center; justify-content: center; width: 30px; height: 30px;">
-            <span style="color: white; font-weight: 900; font-style: italic; font-size: 1rem; font-family: 'Outfit', sans-serif;">A</span>
-        </div>
-        <div style="font-family: 'Outfit', sans-serif;">
-            <span style="color: white; font-weight: 850; font-size: 1.25rem; font-style: italic; letter-spacing: -0.5px;">AI Finance</span>
+    <div style="display: flex; align-items: center; gap: 12px;">
+        <img src="data:image/png;base64,{logo_base64}" style="width: 42px; height: 42px; border-radius: 8px; object-fit: cover;">
+        <div style="display: flex; flex-direction: column; font-family: 'Outfit', sans-serif;">
+            <span style="color: #FFFFFF; font-weight: 800; font-size: 1.15rem; line-height: 1.15; letter-spacing: -0.3px;">AI Finance</span>
+            <span style="color: #9AA9BD; font-weight: 600; font-size: 0.85rem; letter-spacing: 0.5px;">Controller</span>
         </div>
     </div>
 </div>
-<div style="border-bottom: 1px solid rgba(255, 255, 255, 0.08); width: 84%; margin: 8px auto 14px auto;"></div>
-""", unsafe_allow_html=True)
+<div style="border-bottom: 1px solid rgba(255, 255, 255, 0.05); width: 84%; margin: 8px auto 14px auto;"></div>
+"""), unsafe_allow_html=True)
 
-# Render Sidebar Menu items directly (no groupings)
-render_sidebar_item("Dashboard", "dashboard", "🏠")
+# Render Sidebar Menu groupings and items using Unicode symbols
+st.sidebar.markdown('<div class="sidebar-section-header">OVERVIEW</div>', unsafe_allow_html=True)
+render_sidebar_item("Dashboard", "dashboard", "▣")
+
+st.sidebar.markdown('<div class="sidebar-section-header">RECONCILIATION</div>', unsafe_allow_html=True)
 render_sidebar_item("Transactions", "transactions", "⇄")
-render_sidebar_item("Exceptions", "exceptions", "⚠️")
-render_sidebar_item("Settlements", "settlements", "⚡", badge='<div class="sidebar-btn-badge-lightning">⚡</div>')
-render_sidebar_item("Payouts", "payouts", "💸")
-render_sidebar_item("Bank", "bank", "🏦")
-render_sidebar_item("Tax & TDS", "tax", "🏛️")
+render_sidebar_item("Exceptions", "exceptions", "⚠")
+render_sidebar_item("Settlements", "settlements", "✓", badge='<div class="sidebar-btn-badge-lightning">⚡</div>')
+
+st.sidebar.markdown('<div class="sidebar-section-header">FINANCE</div>', unsafe_allow_html=True)
+render_sidebar_item("Payouts", "payouts", "₹")
+render_sidebar_item("Bank", "bank", "▣")
+render_sidebar_item("Tax & TDS", "tax", "▤")
+
+st.sidebar.markdown('<div class="sidebar-section-header">INSIGHTS</div>', unsafe_allow_html=True)
 render_sidebar_item("AI Insights", "insights", "✦")
-render_sidebar_item("Cash Forecast", "forecast", "📈")
-render_sidebar_item("Reports", "reports", "📋")
-render_sidebar_item("Settings", "settings", "⚙️")
-render_sidebar_item("Admin", "admin", "🔒")
+render_sidebar_item("Cash Forecast", "forecast", "↗")
+render_sidebar_item("Reports", "reports", "▤")
+
+# Divider before bottom items
+st.sidebar.markdown('<div style="border-bottom: 1px solid rgba(255, 255, 255, 0.05); width: 84%; margin: 12px auto 14px auto;"></div>', unsafe_allow_html=True)
+
+render_sidebar_item("Settings", "settings", "⚙")
+render_sidebar_item("Admin", "admin", "♙")
+
+# Profile info area at the bottom
+st.sidebar.markdown(f"""
+<div style="padding: 12px 24px; border-top: 1px solid rgba(255,255,255,0.05); margin-top: 10px; display: flex; align-items: center; gap: 10px;">
+    <div style="width: 32px; height: 32px; border-radius: 50%; background-color: #3b82f6; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 13px; font-family: 'Outfit', sans-serif;">
+        FC
+    </div>
+    <div style="display: flex; flex-direction: column; font-family: 'Inter', sans-serif;">
+        <span style="color: white; font-weight: 600; font-size: 13px; line-height: 1.2;">Admin</span>
+        <span style="color: #9AA9BD; font-size: 11px;">Finance Controller</span>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
 # ----------------------------------------------------
 # TOP HEADER BAR IMPLEMENTATION
 # ----------------------------------------------------
 col_header_left, col_header_right = st.columns([2.2, 1.8])
 with col_header_left:
-    st.markdown("""
-    <div class="header-search-container">
-        <span style="font-size: 1rem; margin-right: 8px; color: #6B7C93;">🔍</span>
-        <span style="color: #6B7C93; font-size: 0.85rem; font-weight: 500;">Search transaction IDs, orders, or settlement credits...</span>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(clean_html(f"""
+    <form action="" method="get" target="_self" style="width: 100%; margin: 0; padding: 0;">
+        <input type="hidden" name="page" value="{st.session_state.page}">
+        <div class="header-search-container">
+            <span style="font-size: 1rem; margin-right: 8px; color: #6B7C93;">🔍</span>
+            <input type="text" name="search" placeholder="Search transaction IDs, orders, or settlement credits..." style="border: none; outline: none; width: 100%; font-size: 0.85rem; font-weight: 500; color: #172B4D; font-family: 'Inter', sans-serif; background: transparent;">
+        </div>
+    </form>
+    """), unsafe_allow_html=True)
 
 with col_header_right:
     col_sub_icons, col_sub_sel = st.columns([1, 2])
     with col_sub_icons:
-        st.markdown("""
+        st.markdown(clean_html("""
         <div class="header-icons-wrapper">
-            <span class="header-icon" title="Notifications">🔔</span>
-            <span class="header-icon" title="Help Centre">❓</span>
-            <span class="header-avatar" title="Shivendu K (Admin)">SK</span>
+            <a href="?notify=true" target="_self" class="header-icon" title="Notifications" style="text-decoration: none;">🔔</a>
+            <a href="?page=settings" target="_self" class="header-icon" title="Help Centre" style="text-decoration: none;">❓</a>
+            <a href="?page=settings" target="_self" class="header-avatar" title="Shivendu K (Admin)" style="text-decoration: none; color: white;">FK</a>
         </div>
-        """, unsafe_allow_html=True)
+        """), unsafe_allow_html=True)
     with col_sub_sel:
         # Dynamic interactive batch selector
         dataset_option = st.selectbox(
@@ -1072,8 +1311,31 @@ if dataset_option == "Razorpay Synthetic Batch (60 records)":
     metrics, df_tx, df_unmatched, df_bank, bank_excs = run_3way_reconciliation()
 else:
     # AUGUST 25 DATASET MOCK ENDPOINT
-    from app import get_august_25_example_data
     metrics, df_tx, df_unmatched, df_bank, bank_excs = get_august_25_example_data()
+
+# Trigger dynamic dataset RAG export only when the active batch selection changes
+if st.session_state.current_indexed_batch != dataset_option:
+    export_data_for_rag(df_tx, df_orders, df_bank)
+    st.session_state.current_indexed_batch = dataset_option
+
+# Handle search and notify queries
+query_params = st.query_params
+if "notify" in query_params:
+    st.toast("🔔 Notifications: Today's closing batch contains 16 unresolved gateway exceptions.", icon="⚠️")
+    st.query_params.clear()
+    if "page" in st.session_state:
+        st.query_params.page = st.session_state.page
+if "search" in query_params:
+    q = query_params["search"].strip()
+    if q:
+        matches = df_tx[df_tx['transaction_id'].str.contains(q, case=False, na=False) | df_tx['order_id'].str.contains(q, case=False, na=False)]
+        if not matches.empty:
+            st.session_state.page = "transactions"
+            st.session_state.audit_tx = matches.iloc[0]['transaction_id']
+            st.query_params.clear()
+            st.query_params.page = "transactions"
+            st.query_params.audit_tx = matches.iloc[0]['transaction_id']
+            st.rerun()
 
 # Apply local exception resolutions dynamically
 if len(st.session_state.resolved_exceptions) > 0:
@@ -1082,14 +1344,16 @@ if len(st.session_state.resolved_exceptions) > 0:
         idx_list = df_tx[df_tx['transaction_id'] == res_id].index
         if not idx_list.empty:
             df_tx.loc[idx_list, 'resolution_status'] = 'AUTO_RESOLVED'
-            df_tx.loc[idx_list, 'calculated_exceptions'] = [[] for _ in idx_list]
+            for idx in idx_list:
+                df_tx.at[idx, 'calculated_exceptions'] = []
             df_tx.loc[idx_list, 'confidence_score'] = 1.0
             
         # Reconcile df_unmatched
         idx_list_un = df_unmatched[df_unmatched['order_id'] == res_id].index
         if not idx_list_un.empty:
             df_unmatched.loc[idx_list_un, 'resolution_status'] = 'AUTO_RESOLVED'
-            df_unmatched.loc[idx_list_un, 'calculated_exceptions'] = [[] for _ in idx_list_un]
+            for idx in idx_list_un:
+                df_unmatched.at[idx, 'calculated_exceptions'] = []
             df_unmatched.loc[idx_list_un, 'confidence_score'] = 1.0
             
     # Recalculate metrics based on resolutions
@@ -1782,12 +2046,17 @@ elif st.session_state.page == "exceptions":
             with col_b1:
                 # View details redirect
                 if st.button("View Details", key=f"exc_view_{ex['id']}", use_container_width=True):
+                    st.query_params.clear()
                     if ex['type'] == 'Gateway Transaction':
                         st.session_state.page = "transactions"
                         st.session_state.audit_tx = ex['id']
+                        st.query_params.page = "transactions"
+                        st.query_params.audit_tx = ex['id']
                     else:
                         st.session_state.page = "admin"
                         st.session_state.admin_page = "Data Sources"
+                        st.query_params.page = "admin"
+                        st.query_params.admin_page = "Data Sources"
                     st.rerun()
             with col_b2:
                 if st.button("Explain with AI", key=f"exc_explain_{ex['id']}", use_container_width=True):
@@ -1795,6 +2064,10 @@ elif st.session_state.page == "exceptions":
                     st.session_state.page = "transactions"
                     st.session_state.audit_tx = ex['id']
                     st.session_state.explain_tx = ex['id']
+                    st.query_params.clear()
+                    st.query_params.page = "transactions"
+                    st.query_params.audit_tx = ex['id']
+                    st.query_params.explain_tx = ex['id']
                     st.rerun()
             with col_b3:
                 # Resolve exception locally!
@@ -2118,81 +2391,94 @@ elif st.session_state.page == "insights":
     st.markdown("<p style='color: var(--text-sec); font-size: 14px;'>RAG-enabled Generative Finance Auditor & Compliance assistant.</p>", unsafe_allow_html=True)
     
     # Custom interactive chatbot UI
-    # Retrieve sessions
-    sessions = get_chat_sessions()
+    # Custom interactive chatbot UI split with Backup loader
+    col_chat, col_backup = st.columns([2.1, 0.9])
     
-    # Active query input
-    st.markdown("### Generative Auditor Chat Console")
-    
-    chat_box = st.container()
-    with chat_box:
-        if len(st.session_state.messages) == 0:
-            st.info("Ask the AI Assistant about settlement policies, fee discrepancies, or daily close audits.")
-        for msg in st.session_state.messages:
-            role_label = "👤 User Query" if msg['role'] == 'user' else "🤖 AI Response"
-            role_color = "rgba(15, 76, 117, 0.05)" if msg['role'] == 'user' else "#F8FAFC"
-            st.markdown(f"""
-            <div style="background-color: {role_color}; padding: 15px; border-radius: 6px; border: 1px solid var(--border); margin-bottom: 12px;">
-                <strong>{role_label}</strong>
-                <p style="margin: 6px 0 0 0; font-size: 13.5px; font-weight: 500;">{msg['content']}</p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-    # Form input
-    with st.form(key="ai_page_chat_form", clear_on_submit=True):
-        chat_col_inp, chat_col_btn = st.columns([5, 1])
-        with chat_col_inp:
-            chat_user_query = st.text_input(
-                "Ask a question:", 
-                placeholder="Why did transaction pay_exc_fee_00 fail reconciliation?", 
-                label_visibility="collapsed"
-            )
-        with chat_col_btn:
-            chat_submit = st.form_submit_button("Send Query", use_container_width=True)
-            
-    if chat_submit and chat_user_query.strip():
-        # Append user message
-        st.session_state.messages.append({"role": "user", "content": chat_user_query})
-        save_chat_message(st.session_state.session_id, "user", chat_user_query)
-        
-        # Generate RAG Context and run model
-        api_key = st.session_state.sys_gemini_api_key
-        rag_context = retrieve_relevant_context(chat_user_query, api_key, top_n=3)
-        
-        history_context = ""
-        if len(st.session_state.messages) > 1:
-            for m in st.session_state.messages[:-1]:
-                history_context += f"- {'USER' if m['role']=='user' else 'ASSISTANT'}: {m['content']}\n"
+    with col_chat:
+        st.markdown("### Generative Auditor Chat Console")
+        chat_box = st.container()
+        with chat_box:
+            if len(st.session_state.messages) == 0:
+                st.info("Ask the AI Assistant about settlement policies, fee discrepancies, or daily close audits.")
+            for msg in st.session_state.messages:
+                role_label = "👤 User Query" if msg['role'] == 'user' else "🤖 AI Response"
+                role_color = "rgba(15, 76, 117, 0.05)" if msg['role'] == 'user' else "#F8FAFC"
+                st.markdown(f"""
+                <div style="background-color: {role_color}; padding: 15px; border-radius: 6px; border: 1px solid var(--border); margin-bottom: 12px;">
+                    <strong>{role_label}</strong>
+                    <p style="margin: 6px 0 0 0; font-size: 13.5px; font-weight: 500;">{msg['content']}</p>
+                </div>
+                """, unsafe_allow_html=True)
                 
-        evidence_prompt = f"""
-        DAILY CLOSE DATA SUMMARY:
-        - Total Payments: {metrics['total_payments_processed']}
-        - Reconciled rate: {acc_val}%
-        - Bank Credit: INR {metrics['settled_to_bank_inr']}
-        - Exceptions Count: {metrics['needs_review_count']}
-        
-        RAG CONTEXT FROM POLICIES:
-        {rag_context}
-        """
-        
-        # Generate response
-        if api_key:
-            try:
-                genai.configure(api_key=api_key)
-                model = genai.GenerativeModel(st.session_state.sys_gemini_model)
-                full_p = f"{evidence_prompt}\n\nUser query: {chat_user_query}\n\nAnswer concisely:"
-                resp = model.generate_content(full_p)
-                answer = resp.text
-            except Exception as e:
-                answer = f"Gemini Error: {str(e)}"
-        else:
-            # Fallback keyword engine
-            from app import local_heuristic_engine
-            answer = local_heuristic_engine(chat_user_query)
+        # Form input
+        with st.form(key="ai_page_chat_form", clear_on_submit=True):
+            chat_col_inp, chat_col_btn = st.columns([5, 1.3])
+            with chat_col_inp:
+                chat_user_query = st.text_input(
+                    "Ask a question:", 
+                    placeholder="Why did transaction pay_exc_fee_00 fail reconciliation?", 
+                    label_visibility="collapsed"
+                )
+            with chat_col_btn:
+                chat_submit = st.form_submit_button("Send Query", use_container_width=True)
+                
+        if chat_submit and chat_user_query.strip():
+            # Append user message
+            st.session_state.messages.append({"role": "user", "content": chat_user_query})
+            save_chat_message(st.session_state.session_id, "user", chat_user_query)
             
-        st.session_state.messages.append({"role": "assistant", "content": answer})
-        save_chat_message(st.session_state.session_id, "assistant", answer)
-        st.rerun()
+            # Generate RAG grounded Gemini response
+            generate_ai_response(chat_user_query)
+            st.rerun()
+
+    with col_backup:
+        st.markdown("### Backup & Sessions")
+        
+        # Unique session IDs list
+        sessions = get_chat_sessions()
+        if not sessions:
+            st.info("No saved chat backups found in database.")
+        else:
+            # Let the user select a session
+            selected_s = st.selectbox(
+                "Select Chat Log",
+                sessions,
+                format_func=lambda x: f"{x['start_time']} - {x['first_message'][:20]}...",
+                key="chat_backup_selectbox"
+            )
+            
+            if selected_s:
+                from src.database import get_chat_history
+                history_data = get_chat_history(selected_s['session_id'])
+                st.markdown(f"**Messages in session:** {len(history_data)}")
+                
+                # Restore button
+                if st.button("🔄 Load & Restore Chat", key="btn_restore_session_history", use_container_width=True):
+                    st.session_state.messages = []
+                    for m in history_data:
+                        st.session_state.messages.append({
+                            'role': m['role'],
+                            'content': m['content']
+                        })
+                    st.session_state.session_id = selected_s['session_id']
+                    st.success("Conversation log restored successfully!")
+                    st.rerun()
+                    
+                # Export download button
+                txt_output = f"AI FINANCE CONTROLLER CONVERSATION EXPORT\n"
+                txt_output += f"Session ID: {selected_s['session_id']}\n"
+                txt_output += f"Start Time: {selected_s['start_time']}\n"
+                txt_output += f"==========================================\n\n"
+                for msg in history_data:
+                    txt_output += f"[{msg['timestamp']}] {msg['role'].upper()}:\n{msg['content']}\n\n"
+                    
+                st.download_button(
+                    label="📥 Export Conversation log",
+                    data=txt_output,
+                    file_name=f"chat_history_{selected_s['session_id']}.txt",
+                    mime="text/plain",
+                    use_container_width=True
+                )
 
 # ----------------------------------------------------
 # PAGE 9: CASH FORECAST
@@ -2271,7 +2557,7 @@ elif st.session_state.page == "reports":
 elif st.session_state.page == "settings":
     st.markdown("<h2>Merchant Settings & Support</h2>", unsafe_allow_html=True)
     
-    sett_tab1, sett_tab2 = st.tabs(["Profile Configurations", "Merchant Support Helpdesk"])
+    sett_tab1, sett_tab2, sett_tab3 = st.tabs(["Profile Configurations", "Merchant Support Helpdesk", "AI Configuration"])
     
     with sett_tab1:
         st.markdown("### Profile Settings")
@@ -2312,6 +2598,229 @@ elif st.session_state.page == "settings":
                     <p style="margin: 6px 0 0 0; font-size: 12.5px; background: #F8FAFC; padding: 8px; border-radius: 4px;">{tk['message']}</p>
                 </div>
                 """, unsafe_allow_html=True)
+
+    with sett_tab3:
+        st.markdown("### AI Configuration")
+        
+        # Load indexed docs from db
+        from src.database import get_indexed_documents
+        indexed_docs = get_indexed_documents()
+        total_docs = len(indexed_docs)
+        
+        # Connection status check
+        has_key = bool(st.session_state.sys_gemini_api_key)
+        rag_connected = has_key and total_docs > 0
+        status_color = "#10B981" if rag_connected else "#EF4444"
+        status_text = "Connected" if rag_connected else "Not Connected"
+        
+        col_cfg_l, col_cfg_r = st.columns(2)
+        with col_cfg_l:
+            # Mask API Key to never expose it raw
+            masked_key = ""
+            if has_key:
+                raw_key = st.session_state.sys_gemini_api_key
+                masked_key = "•" * 12 + raw_key[-4:] if len(raw_key) >= 4 else "••••••••••••••••"
+                
+            new_key_input = st.text_input(
+                "Gemini API Key",
+                type="password",
+                value="",
+                placeholder="Enter new Gemini API key to update...",
+                help=f"Active Key: {masked_key}" if has_key else "No active key configured."
+            )
+            
+            # Connection testing and Save actions
+            col_t1, col_t2 = st.columns(2)
+            with col_t1:
+                test_conn = st.button("Test Connection", use_container_width=True)
+            with col_t2:
+                save_cfg = st.button("Save Configuration", use_container_width=True)
+                
+        with col_cfg_r:
+            selected_model_val = st.selectbox(
+                "Gemini Model",
+                ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"],
+                index=["gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"].index(st.session_state.sys_gemini_model) if st.session_state.sys_gemini_model in ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"] else 0
+            )
+            
+            # RAG Metadata displays
+            st.markdown(f"""
+            <div style="background-color: #F8FAFC; border: 1px solid var(--border); padding: 12px; border-radius: 6px; margin-top: 10px;">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                    <span style="color: {status_color}; font-size: 1.15rem;">●</span>
+                    <strong style="font-size: 13.5px; color: var(--navy);">RAG Status: {status_text}</strong>
+                </div>
+                <div style="font-size: 12.5px; color: var(--text-sec); margin-bottom: 4px;">
+                    <strong>Document Index:</strong> {total_docs} documents indexed
+                </div>
+                <div style="font-size: 12.5px; color: var(--text-sec);">
+                    <strong>Last Updated:</strong> 29 Aug 2026, 15:45
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        # Process actions after both columns run to avoid NameError on selected_model_val
+        if test_conn:
+            test_key = new_key_input.strip() or st.session_state.sys_gemini_api_key
+            if not test_key:
+                st.error("No API key available to test.")
+            else:
+                with st.spinner("Testing connection..."):
+                    try:
+                        import google.generativeai as genai
+                        genai.configure(api_key=test_key)
+                        test_model = genai.GenerativeModel(st.session_state.sys_gemini_model)
+                        resp = test_model.generate_content("Ping test. Respond with 'OK'.")
+                        if resp.text:
+                            st.success("Connection Successful!")
+                    except Exception as e:
+                        st.error(f"Connection Failed: {str(e)}")
+                        
+        if save_cfg:
+            if new_key_input.strip():
+                st.session_state.sys_gemini_api_key = new_key_input.strip()
+            st.session_state.sys_gemini_model = selected_model_val
+            st.session_state.sys_system_prompt_template = custom_prompt_val
+            st.success("AI configuration saved successfully!")
+            st.rerun()
+
+        st.markdown("#### System Instruction Prompt Editor")
+        custom_prompt_val = st.text_area(
+            "AI System Instruction Template",
+            value=st.session_state.sys_system_prompt_template,
+            height=180,
+            help="Dynamic placeholders: {evidence_prompt} (Daily close stats), {retrieved_context} (RAG documents), {history_context} (Chat history)"
+        )
+
+        st.markdown("---")
+        st.markdown("### Knowledge Base")
+        
+        # Document counters
+        m_c1, m_c2, m_c3 = st.columns(3)
+        with m_c1:
+            st.metric("Documents", total_docs)
+        with m_c2:
+            st.metric("Indexed", total_docs)
+        with m_c3:
+            st.metric("Failed", 0)
+            
+        # File upload widgets
+        uploaded_file = st.file_uploader("Upload Document (PDF or Markdown)", type=["pdf", "md"])
+        if uploaded_file is not None:
+            if st.button("Upload & Index Document"):
+                with st.spinner("Processing document embeddings..."):
+                    try:
+                        base_dir = os.path.dirname(os.path.abspath(__file__))
+                        docs_dir = os.path.join(base_dir, "documents")
+                        os.makedirs(docs_dir, exist_ok=True)
+                        dest_path = os.path.join(docs_dir, uploaded_file.name)
+                        
+                        with open(dest_path, "wb") as f:
+                            f.write(uploaded_file.getbuffer())
+                            
+                        # Trigger ingestion index builds
+                        from src.rag_engine import build_document_index
+                        active_key = st.session_state.sys_gemini_api_key
+                        if build_document_index(active_key, force_reindex=True):
+                            st.success(f"✓ Indexed {uploaded_file.name} successfully!")
+                            st.rerun()
+                        else:
+                            st.error("Failed to generate document index embeddings.")
+                    except Exception as ex:
+                        st.error(f"Upload Error: {str(ex)}")
+
+        st.markdown("#### Document Index Status Table")
+        if not indexed_docs:
+            st.info("No documents currently indexed.")
+        else:
+            for idx, doc in enumerate(indexed_docs):
+                d_name = doc['file_name']
+                d_type = "PDF" if d_name.endswith('.pdf') else "MD"
+                d_chunks = doc['chunks']
+                
+                c_tbl1, c_tbl2, c_tbl3, c_tbl4, c_tbl5 = st.columns([3, 1, 1, 2, 2])
+                with c_tbl1:
+                    st.markdown(f"📄 **{d_name}**")
+                with c_tbl2:
+                    st.markdown(f"`{d_type}`")
+                with c_tbl3:
+                    st.markdown(f"{d_chunks} chunks")
+                with c_tbl4:
+                    st.markdown("<span style='color: #10B981; font-weight: 600;'>✓ Indexed</span>", unsafe_allow_html=True)
+                with c_tbl5:
+                    col_btn_v, col_btn_d = st.columns(2)
+                    with col_btn_v:
+                        if st.button("View", key=f"btn_view_{idx}_{d_name}"):
+                            st.session_state[f"view_toggle_{d_name}"] = not st.session_state.get(f"view_toggle_{d_name}", False)
+                    with col_btn_d:
+                        if st.button("Delete", key=f"btn_del_{idx}_{d_name}"):
+                            from src.database import delete_document_chunks
+                            delete_document_chunks(d_name)
+                            # Remove local file if present
+                            base_dir = os.path.dirname(os.path.abspath(__file__))
+                            local_file = os.path.join(base_dir, "documents", d_name)
+                            if os.path.exists(local_file):
+                                os.remove(local_file)
+                            st.success(f"Deleted index references for {d_name}.")
+                            st.rerun()
+                            
+                # Handle text previews
+                if st.session_state.get(f"view_toggle_{d_name}", False):
+                    base_dir = os.path.dirname(os.path.abspath(__file__))
+                    local_file = os.path.join(base_dir, "documents", d_name)
+                    if os.path.exists(local_file):
+                        with open(local_file, "r", encoding="utf-8", errors="ignore") as f_prev:
+                            st.text_area(f"Preview: {d_name}", f_prev.read()[:2000], height=200, key=f"txt_area_{idx}_{d_name}")
+
+        st.markdown("---")
+        st.markdown("### Test RAG Pipeline")
+        
+        test_prompt = st.text_input(
+            "Test Question", 
+            value="How is TDS calculated according to the uploaded policy?",
+            key="config_rag_test_prompt"
+        )
+        
+        if st.button("Test RAG", key="btn_run_test_rag"):
+            if not st.session_state.sys_gemini_api_key:
+                st.error("RAG testing requires a valid Gemini API key to run semantic embeddings.")
+            else:
+                with st.spinner("Executing retrieval queries..."):
+                    try:
+                        from src.rag_engine import retrieve_relevant_context_with_sources
+                        results = retrieve_relevant_context_with_sources(test_prompt, st.session_state.sys_gemini_api_key, top_n=3)
+                        
+                        if not results:
+                            st.warning("No matching context blocks returned from database index.")
+                        else:
+                            st.markdown(f"**Retrieved Documents:** {len(results)}")
+                            top_src = results[0]
+                            st.markdown(f"**Top matching source:** `{top_src['file_name']}`")
+                            
+                            # Similarity percentage calculation
+                            similarity_pct = int(top_src.get('score', 0.5) * 100)
+                            st.markdown(f"**Similarity / relevance:** `{similarity_pct}%`")
+                            
+                            # Answer generation
+                            context_str = "\n\n".join([r['text_content'] for r in results])
+                            prompt_str = f"""You are the AI Finance Controller assistant.
+                            Answer the user's question using the provided financial documents/context.
+                            
+                            Retrieved Context:
+                            {context_str}
+                            
+                            User Question:
+                            {test_prompt}
+                            """
+                            
+                            import google.generativeai as genai
+                            genai.configure(api_key=st.session_state.sys_gemini_api_key)
+                            test_model = genai.GenerativeModel(st.session_state.sys_gemini_model)
+                            resp = test_model.generate_content(prompt_str)
+                            st.markdown("**Generated Answer:**")
+                            st.info(resp.text)
+                    except Exception as e:
+                        st.error(f"RAG Test Error: {str(e)}")
 
 # ----------------------------------------------------
 # PAGE 12: ADMIN PANEL
@@ -2413,8 +2922,8 @@ elif st.session_state.page == "admin":
         
         st.session_state.sys_gemini_model = st.selectbox(
             "Model Name",
-            ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"],
-            index=["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"].index(st.session_state.sys_gemini_model)
+            ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"],
+            index=["gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"].index(st.session_state.sys_gemini_model) if st.session_state.sys_gemini_model in ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"] else 0
         )
         
         st.session_state.sys_confidence_threshold = st.slider(
@@ -2495,64 +3004,8 @@ with st.popover("💬 Ask AI Assistant", use_container_width=False):
         with chat_popup_cont:
             with st.chat_message("assistant"):
                 with st.spinner("Analyzing data and matching policy references..."):
-                    # Retrieve matching segments from .md and .pdf policy files
-                    api_key = st.session_state.sys_gemini_api_key
-                    rag_context = retrieve_relevant_context(popup_chat_input, api_key, top_n=3)
-                    
-                    # Construct conversation history
-                    history_context = ""
-                    if len(st.session_state.messages) > 1:
-                        history_context = "\nCONVERSATION HISTORY (Previous turns in this thread):\n"
-                        for msg in st.session_state.messages[:-1]:
-                            role_label = "USER" if msg['role'] == 'user' else "ASSISTANT"
-                            history_context += f"- {role_label}: {msg['content']}\n"
-                    
-                    # Core database context prompt
-                    evidence_prompt = f"""
-                    DAILY CLOSE DATA SUMMARY:
-                    - Total Payments Processed: {metrics['total_payments_processed']}
-                    - Auto-match Accuracy: {metrics['auto_match_accuracy_pct']}%
-                    - Gross Customer Collections: INR {metrics['gross_collections_inr']:,.2f}
-                    - Refunds Processed: INR {metrics['refunds_inr']:,.2f}
-                    - Gateway Fees + GST: INR {metrics['fees_gst_inr']:,.2f}
-                    - Settled to Bank: INR {metrics['settled_to_bank_inr']:,.2f}
-                    - Expected pending settlement: INR {metrics['expected_next_2_days_inr']:,.2f}
-                    - Needs Review (Exceptions) count: {metrics['needs_review_count']}
-                    """
-                    
-                    full_system_context = f"""You are an expert AI Finance Controller and Reconciliation Auditor.
-                    Your goal is to answer questions using both transaction evidence and official documents.
-                    
-                    {evidence_prompt}
-                    
-                    DOCUMENTATION CONTEXT (Policy rules and Tax specifications retrieved from files):
-                    {rag_context}
-                    
-                    {history_context}
-                    
-                    INSTRUCTIONS:
-                    - Quote transaction values, order IDs, and exception reasons exactly as calculated in the ledger.
-                    - Explain the relevant policy rules and references accurately.
-                    - Keep the explanation factual, concise, and formatted in clear markdown.
-                    """
-                    
-                    # Generate LLM response
-                    if api_key:
-                        try:
-                            genai.configure(api_key=api_key)
-                            model = genai.GenerativeModel(st.session_state.sys_gemini_model)
-                            full_prompt = f"{full_system_context}\n\nUSER QUESTION: {popup_chat_input}\n\nANSWER:"
-                            response = model.generate_content(full_prompt)
-                            answer = response.text
-                        except Exception as e:
-                            answer = f"Gemini API Error: {str(e)}"
-                    else:
-                        from app import local_heuristic_engine
-                        answer = local_heuristic_engine(popup_chat_input)
-
-                    st.markdown(answer)
-                    st.session_state.messages.append({"role": "assistant", "content": answer})
-                    save_chat_message(st.session_state.session_id, "assistant", answer)
+                    generate_ai_response(popup_chat_input)
+                    st.markdown(st.session_state.messages[-1]["content"])
                     
         st.rerun()
 

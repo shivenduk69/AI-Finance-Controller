@@ -395,3 +395,38 @@ def resolve_support_ticket(ticket_id, resolution_comments):
         
     conn.commit()
     conn.close()
+
+def get_indexed_documents():
+    """Returns unique indexed filenames, chunk counts, and indexing metadata from SQLite."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT file_name, COUNT(id) FROM document_chunks GROUP BY file_name")
+        docs = []
+        for row in cursor.fetchall():
+            docs.append({
+                'file_name': row[0],
+                'chunks': row[1],
+                'status': '✓ Indexed',
+                'uploaded': '29 Aug 2026'
+            })
+        return docs
+    except Exception:
+        return []
+    finally:
+        conn.close()
+
+def delete_document_chunks(file_name):
+    """Deletes all vector chunks associated with the specified filename."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        if is_mysql_configured():
+            cursor.execute("DELETE FROM document_chunks WHERE file_name = %s", (file_name,))
+        else:
+            cursor.execute("DELETE FROM document_chunks WHERE file_name = ?", (file_name,))
+        conn.commit()
+    except Exception as e:
+        print(f"Database Delete Chunks Error: {str(e)}")
+    finally:
+        conn.close()

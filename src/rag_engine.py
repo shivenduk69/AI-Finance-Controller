@@ -194,21 +194,21 @@ def keyword_search_fallback(query, chunks, top_n=3):
     scored_chunks.sort(key=lambda x: x[0], reverse=True)
     return [text for score, text in scored_chunks[:top_n] if score > 0]
 
-def retrieve_relevant_context(query, api_key, top_n=3):
-    """Retrieves top_n document chunks matching the query. Employs semantic or keyword search."""
+def retrieve_relevant_context_with_sources(query, api_key, top_n=3):
+    """Retrieves top_n document chunks matching the query with their metadata. Employs semantic or keyword search."""
     chunks = get_document_chunks()
     if not chunks:
         # Trigger an index scan with the key if database has no chunks
         build_document_index(api_key)
         chunks = get_document_chunks()
         if not chunks:
-            return "No documents available for search."
+            return []
             
     # Check if we can perform semantic search (we need query api_key, and chunks must have embeddings)
     has_embeddings = any(c['embedding'] and len(c['embedding']) > 0 for c in chunks)
     
     if api_key and has_embeddings:
-        print("Performing semantic semantic search...")
+        print("Performing semantic search...")
         query_emb = get_gemini_embedding(query, api_key, model="models/text-embedding-004")
         
         if query_emb:
@@ -217,7 +217,7 @@ def retrieve_relevant_context(query, api_key, top_n=3):
             for chunk in chunks:
                 chunk_emb = chunk['embedding']
                 if not chunk_emb:
-                    similarities.append((-1.0, chunk['text_content']))
+                    similarities.append((-1.0, chunk))
                     continue
                     
                 # Cosine Similarity
@@ -226,18 +226,60 @@ def retrieve_relevant_context(query, api_key, top_n=3):
                 norm_c = np.linalg.norm(chunk_emb)
                 
                 similarity = dot_product / (norm_q * norm_c) if (norm_q * norm_c) > 0 else 0
-                similarities.append((similarity, chunk['text_content']))
+                similarities.append((similarity, chunk))
                 
             similarities.sort(key=lambda x: x[0], reverse=True)
             # Retrieve top matches
-            results = [text for score, text in similarities[:top_n] if score > 0.1]
+            results = []
+            for score, chunk in similarities[:top_n]:
+                if score > 0.1:
+                    chunk_copy = chunk.copy()
+                    chunk_copy['score'] = float(score)
+                    results.append(chunk_copy)
             if results:
-                return "\n\n---\n\n".join(results)
+                return results
                 
     # Fallback to local keyword search
     print("Fallback to keyword-based retrieval...")
-    results = keyword_search_fallback(query, chunks, top_n)
-    if results:
-        return "\n\n---\n\n".join(results)
-    else:
+    
+    def tokenize(text):
+        words = re.findall(r'\b\w+\b', text.lower())
+        return [w for w in words if w not in STOPWORDS]
+        
+    query_tokens = tokenize(query)
+    if not query_tokens:
+        results = []
+        for c in chunks[:top_n]:
+            c_copy = c.copy()
+            c_copy['score'] = 0.5 # dummy score
+            results.append(c_copy)
+        return results
+        
+    scored_chunks = []
+    for chunk in chunks:
+        chunk_text = chunk['text_content']
+        chunk_tokens = tokenize(chunk_text)
+        
+        score = 0
+        for token in query_tokens:
+            count = chunk_tokens.count(token)
+            if count > 0:
+                score += (1 + np.log(count)) / (1 + np.log(len(chunk_tokens) + 1))
+                
+        scored_chunks.append((score, chunk))
+        
+    scored_chunks.sort(key=lambda x: x[0], reverse=True)
+    results = []
+    for score, chunk in scored_chunks[:top_n]:
+        if score > 0:
+            chunk_copy = chunk.copy()
+            chunk_copy['score'] = float(score) / 10.0 # Normalized approximation
+            results.append(chunk_copy)
+    return results
+
+def retrieve_relevant_context(query, api_key, top_n=3):
+    """Retrieves top_n document chunks matching the query. Employs semantic or keyword search."""
+    results = retrieve_relevant_context_with_sources(query, api_key, top_n)
+    if not results:
         return "No relevant context found in documents."
+    return "\n\n---\n\n".join([r['text_content'] for r in results])
