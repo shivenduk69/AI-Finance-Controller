@@ -341,15 +341,15 @@ st.markdown("""
     
     /* Sidebar Overhaul */
     [data-testid="stSidebar"] {
-        background-color: #0b1c33 !important;
-        border-right: 1px solid #1e2e4a !important;
+        background-color: #202a3b !important;
+        border-right: 1px solid rgba(255, 255, 255, 0.05) !important;
         width: 290px !important;
     }
     
     [data-testid="stSidebarUserContent"] {
         padding-top: 1.5rem !important;
-        padding-left: 0.75rem !important;
-        padding-right: 0.75rem !important;
+        padding-left: 0px !important;
+        padding-right: 0px !important;
     }
     
     /* Hide Streamlit default collapse sidebar button */
@@ -359,69 +359,99 @@ st.markdown("""
     
     /* Custom Sidebar Logo styling */
     .sidebar-logo {
-        padding: 0 12px 20px 12px;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-        margin-bottom: 20px;
-    }
-    
-    .sidebar-logo h3 {
-        color: #FFFFFF !important;
-        margin: 0 !important;
-        font-size: 1.3rem !important;
-        font-weight: 800 !important;
-        letter-spacing: 0.5px;
-    }
-    
-    .sidebar-logo p {
-        color: rgba(255, 255, 255, 0.5) !important;
-        margin: 2px 0 0 0 !important;
-        font-size: 0.72rem !important;
-        font-weight: 500;
-        text-transform: uppercase;
-        letter-spacing: 0.8px;
-    }
-    
-    /* Sidebar Section Headers */
-    .sidebar-section-header {
-        color: rgba(255, 255, 255, 0.35) !important;
-        font-size: 10px !important;
-        font-weight: 700 !important;
-        letter-spacing: 1.2px !important;
-        margin-top: 18px !important;
-        margin-bottom: 6px !important;
-        padding-left: 12px !important;
-        text-transform: uppercase !important;
+        padding: 0 24px 15px 24px;
+        margin-bottom: 5px;
     }
     
     /* Sidebar Nav Buttons Styling */
-    .sidebar-btn-wrapper {
-        margin-bottom: 3px !important;
+    section[data-testid="stSidebar"] div[data-testid="stVerticalBlock"] {
+        gap: 0px !important;
     }
     
-    .sidebar-btn-wrapper button {
+    section[data-testid="stSidebar"] div[data-testid="element-container"] {
+        margin: 0px !important;
+        padding: 0px !important;
+    }
+    
+    .sidebar-btn-wrapper {
+        margin-bottom: 0px !important;
+        position: relative !important;
+        width: 100% !important;
+    }
+    
+    /* Target all buttons inside the sidebar to override default Streamlit white cards */
+    section[data-testid="stSidebar"] div.stButton > button,
+    section[data-testid="stSidebar"] button[data-testid="baseButton-secondary"],
+    section[data-testid="stSidebar"] button {
         background-color: transparent !important;
-        color: rgba(255, 255, 255, 0.65) !important;
+        color: #94A3B8 !important;
         border: none !important;
         text-align: left !important;
         justify-content: flex-start !important;
-        padding: 8px 12px !important;
-        border-radius: 6px !important;
-        font-size: 13.5px !important;
+        padding: 11px 24px !important;
+        border-radius: 0px !important;
+        font-size: 14px !important;
         font-weight: 500 !important;
         width: 100% !important;
+        border-left: 3px solid transparent !important;
         transition: all 0.15s ease !important;
         box-shadow: none !important;
+        display: flex !important;
+        align-items: center !important;
+        height: 44px !important;
+        margin: 0px !important;
     }
     
-    .sidebar-btn-wrapper button:hover {
-        background-color: rgba(255, 255, 255, 0.05) !important;
+    section[data-testid="stSidebar"] div.stButton > button:hover,
+    section[data-testid="stSidebar"] button:hover {
+        background-color: rgba(255, 255, 255, 0.03) !important;
         color: #FFFFFF !important;
     }
     
-    .sidebar-btn-wrapper.sidebar-btn-active button {
-        background-color: var(--primary) !important;
+    section[data-testid="stSidebar"] .sidebar-btn-active div.stButton > button,
+    section[data-testid="stSidebar"] .sidebar-btn-active button {
+        background-color: #242e3e !important;
         color: #FFFFFF !important;
         font-weight: 600 !important;
+        border-left: 3px solid #3B82F6 !important;
+    }
+    
+    /* Ensure all text inside the buttons inherits active/hover colors */
+    section[data-testid="stSidebar"] button *,
+    section[data-testid="stSidebar"] button p,
+    section[data-testid="stSidebar"] button span {
+        color: inherit !important;
+        font-size: 14px !important;
+        font-weight: inherit !important;
+    }
+    
+    /* Remove default Streamlit button focus outline */
+    section[data-testid="stSidebar"] button:focus,
+    section[data-testid="stSidebar"] button:active,
+    section[data-testid="stSidebar"] button:focus-visible {
+        outline: none !important;
+        box-shadow: none !important;
+        border-color: transparent !important;
+    }
+    
+    /* Lightning bolt circle indicator on Settlements */
+    .sidebar-btn-badge-lightning {
+        position: absolute !important;
+        right: 24px !important;
+        top: 50% !important;
+        transform: translateY(-50%) !important;
+        background-color: #0070F3 !important;
+        color: white !important;
+        width: 16px !important;
+        height: 16px !important;
+        border-radius: 50% !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        font-size: 9px !important;
+        z-index: 10 !important;
+        pointer-events: none !important;
+        font-weight: bold !important;
     }
     
     /* Top Header elements */
@@ -949,13 +979,20 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+def clean_html(html_str):
+    """Strips all leading and trailing whitespace from each line to prevent Markdown code block triggers."""
+    return "\n".join([line.strip() for line in html_str.split("\n")])
+
 # ----------------------------------------------------
 # CUSTOM SIDEBAR NAVIGATION RENDERER
 # ----------------------------------------------------
-def render_sidebar_item(label, page_name, icon=""):
+def render_sidebar_item(label, page_name, icon="", badge=""):
     is_active = st.session_state.page == page_name
     active_class = "sidebar-btn-active" if is_active else "sidebar-btn-inactive"
-    st.sidebar.markdown(f'<div class="sidebar-btn-wrapper {active_class}">', unsafe_allow_html=True)
+    st.sidebar.markdown(f"""
+    <div class="sidebar-btn-wrapper {active_class}">
+        {badge}
+    """, unsafe_allow_html=True)
     if st.sidebar.button(f"{icon}  {label}", key=f"btn_nav_{page_name}", use_container_width=True):
         st.session_state.page = page_name
         st.session_state.audit_tx = None
@@ -968,31 +1005,29 @@ def render_sidebar_item(label, page_name, icon=""):
 # Render Sidebar Title & Subtitle
 st.sidebar.markdown("""
 <div class="sidebar-logo">
-    <h3>AI Finance</h3>
-    <p>Multi-Source Reconciliation Agent</p>
+    <div style="display: flex; align-items: center; gap: 10px;">
+        <div style="background-color: #3b82f6; border-radius: 4px; padding: 6px; display: flex; align-items: center; justify-content: center; width: 30px; height: 30px;">
+            <span style="color: white; font-weight: 900; font-style: italic; font-size: 1rem; font-family: 'Outfit', sans-serif;">A</span>
+        </div>
+        <div style="font-family: 'Outfit', sans-serif;">
+            <span style="color: white; font-weight: 850; font-size: 1.25rem; font-style: italic; letter-spacing: -0.5px;">AI Finance</span>
+        </div>
+    </div>
 </div>
+<div style="border-bottom: 1px solid rgba(255, 255, 255, 0.08); width: 84%; margin: 8px auto 14px auto;"></div>
 """, unsafe_allow_html=True)
 
-# Render Sidebar Menu groupings
-st.sidebar.markdown('<div class="sidebar-section-header">OVERVIEW</div>', unsafe_allow_html=True)
-render_sidebar_item("Dashboard", "dashboard", "📊")
-
-st.sidebar.markdown('<div class="sidebar-section-header">RECONCILIATION</div>', unsafe_allow_html=True)
-render_sidebar_item("Transactions", "transactions", "💳")
+# Render Sidebar Menu items directly (no groupings)
+render_sidebar_item("Dashboard", "dashboard", "🏠")
+render_sidebar_item("Transactions", "transactions", "⇄")
 render_sidebar_item("Exceptions", "exceptions", "⚠️")
-render_sidebar_item("Settlements", "settlements", "💰")
-
-st.sidebar.markdown('<div class="sidebar-section-header">FINANCE</div>', unsafe_allow_html=True)
+render_sidebar_item("Settlements", "settlements", "⚡", badge='<div class="sidebar-btn-badge-lightning">⚡</div>')
 render_sidebar_item("Payouts", "payouts", "💸")
 render_sidebar_item("Bank", "bank", "🏦")
 render_sidebar_item("Tax & TDS", "tax", "🏛️")
-
-st.sidebar.markdown('<div class="sidebar-section-header">INSIGHTS</div>', unsafe_allow_html=True)
 render_sidebar_item("AI Insights", "insights", "✦")
 render_sidebar_item("Cash Forecast", "forecast", "📈")
 render_sidebar_item("Reports", "reports", "📋")
-
-st.sidebar.markdown('<div class="sidebar-section-header">BOTTOM</div>', unsafe_allow_html=True)
 render_sidebar_item("Settings", "settings", "⚙️")
 render_sidebar_item("Admin", "admin", "🔒")
 
@@ -1199,7 +1234,7 @@ if st.session_state.page == "dashboard":
 
     # Financial flow overview
     st.markdown("### FINANCIAL FLOW OVERVIEW")
-    st.markdown("""
+    st.markdown(clean_html("""
     <div class="flow-container">
         <div class="flow-step">
             <div class="step-label">Customer Collections</div>
@@ -1231,7 +1266,7 @@ if st.session_state.page == "dashboard":
             <div class="step-value" style="color: var(--success); font-weight: 800;">₹61,551.00</div>
         </div>
     </div>
-    """, unsafe_allow_html=True)
+    """), unsafe_allow_html=True)
     
     # AI insights card
     st.markdown("### AI INSIGHTS")
@@ -1389,7 +1424,7 @@ elif st.session_state.page == "transactions":
                         bank_class = "error-node"
             
             # Render Audit Flow Nodes as HTML
-            st.markdown(f"""
+            st.markdown(clean_html(f"""
             <div class="audit-flow-container">
                 <div class="audit-flow-nodes">
                     <!-- Node 1: Internal Orders -->
@@ -1431,7 +1466,7 @@ elif st.session_state.page == "transactions":
                     </div>
                 </div>
             </div>
-            """, unsafe_allow_html=True)
+            """), unsafe_allow_html=True)
             
             # Reconcile verdict card
             st.markdown("### AUDIT VERDICT")
@@ -1598,8 +1633,7 @@ elif st.session_state.page == "transactions":
         if not html_rows:
             html_rows = "<tr><td colspan='10' style='text-align: center; color: var(--text-sec);'>No transactions found matching filters.</td></tr>"
             
-        st.markdown(f"""
-        <div class="custom-table-container">
+        st.markdown(clean_html(f"""<div class="custom-table-container">
             <table class="custom-table">
                 <thead>
                     <tr>
@@ -1619,8 +1653,7 @@ elif st.session_state.page == "transactions":
                     {html_rows}
                 </tbody>
             </table>
-        </div>
-        """, unsafe_allow_html=True)
+        </div>"""), unsafe_allow_html=True)
 
 # ----------------------------------------------------
 # PAGE 3: EXCEPTIONS QUEUE
@@ -1823,8 +1856,7 @@ elif st.session_state.page == "settlements":
         </tr>
         """
         
-    st.markdown(f"""
-    <div class="custom-table-container">
+    st.markdown(clean_html(f"""<div class="custom-table-container">
         <table class="custom-table">
             <thead>
                 <tr>
@@ -1839,8 +1871,7 @@ elif st.session_state.page == "settlements":
                 {settle_rows}
             </tbody>
         </table>
-    </div>
-    """, unsafe_allow_html=True)
+    </div>"""), unsafe_allow_html=True)
     
     st.markdown("<br>", unsafe_allow_html=True)
     st.info("ℹ️ T+2 Settlements Window: Standard collection credits hit bank statement 2 days after transaction dates. Refunds and Payouts resolve instantly (T+0).")
@@ -1911,8 +1942,7 @@ elif st.session_state.page == "payouts":
     if not p_rows:
         p_rows = "<tr><td colspan='6' style='text-align: center; color: var(--text-sec);'>No processed payouts in current batch.</td></tr>"
         
-    st.markdown(f"""
-    <div class="custom-table-container">
+    st.markdown(clean_html(f"""<div class="custom-table-container">
         <table class="custom-table">
             <thead>
                 <tr>
@@ -1928,8 +1958,7 @@ elif st.session_state.page == "payouts":
                 {p_rows}
             </tbody>
         </table>
-    </div>
-    """, unsafe_allow_html=True)
+    </div>"""), unsafe_allow_html=True)
 
 # ----------------------------------------------------
 # PAGE 6: BANK RECONCILIATION
@@ -1995,8 +2024,7 @@ elif st.session_state.page == "bank":
         </tr>
         """
         
-    st.markdown(f"""
-    <div class="custom-table-container">
+    st.markdown(clean_html(f"""<div class="custom-table-container">
         <table class="custom-table">
             <thead>
                 <tr>
@@ -2011,8 +2039,7 @@ elif st.session_state.page == "bank":
                 {statement_rows}
             </tbody>
         </table>
-    </div>
-    """, unsafe_allow_html=True)
+    </div>"""), unsafe_allow_html=True)
 
 # ----------------------------------------------------
 # PAGE 7: TAX & TDS COMPLIANCE
@@ -2064,8 +2091,7 @@ elif st.session_state.page == "tax":
     if not t_rows:
         t_rows = "<tr><td colspan='7' style='text-align: center; color: var(--text-sec);'>No tax audit entries.</td></tr>"
         
-    st.markdown(f"""
-    <div class="custom-table-container">
+    st.markdown(clean_html(f"""<div class="custom-table-container">
         <table class="custom-table">
             <thead>
                 <tr>
@@ -2082,8 +2108,7 @@ elif st.session_state.page == "tax":
                 {t_rows}
             </tbody>
         </table>
-    </div>
-    """, unsafe_allow_html=True)
+    </div>"""), unsafe_allow_html=True)
 
 # ----------------------------------------------------
 # PAGE 8: AI FINANCE INSIGHTS
