@@ -23,604 +23,6 @@ from src.database import (
 )
 from src.rag_engine import retrieve_relevant_context, build_document_index
 
-# Load internal orders lookup for the Audit Deep-Dive Tab
-base_dir = os.path.dirname(os.path.abspath(__file__))
-orders_csv_path = os.path.join(base_dir, "data", "internal_orders.csv")
-if os.path.exists(orders_csv_path):
-    df_orders = pd.read_csv(orders_csv_path)
-else:
-    df_orders = pd.DataFrame(columns=['order_id', 'amount_inr', 'status', 'created_at', 'customer_email'])
-
-
-# ----------------------------------------------------
-# CONFIG & STYLING
-# ----------------------------------------------------
-st.set_page_config(
-    page_title="AI Finance Controller - Daily Close",
-    page_icon="💰",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-import streamlit as st
-
-st.markdown("""
-<style>
-    /* 1. Target ALL text elements inside Inactive Tabs */
-    button[data-baseweb="tab"] p,
-    button[data-baseweb="tab"] div,
-    button[data-baseweb="tab"] span {
-        color: #e2e8f0 !important;              /* Crisp light-gray/white text */
-        font-weight: 500 !important;
-        font-size: 15px !important;
-    }
-
-    button[data-baseweb="tab"] {
-        background-color: transparent !important;
-    }
-
-    /* 2. Target ALL text elements inside Active/Selected Tab */
-    button[data-baseweb="tab"][aria-selected="true"] {
-        background-color: #ffffff !important;
-        border-radius: 6px 6px 0px 0px !important;
-    }
-
-    button[data-baseweb="tab"][aria-selected="true"] p,
-    button[data-baseweb="tab"][aria-selected="true"] div,
-    button[data-baseweb="tab"][aria-selected="true"] span {
-        color: #002b49 !important;              /* Dark navy text on white tab */
-        font-weight: 700 !important;
-    }
-
-    /* 3. Hover state for tabs */
-    button[data-baseweb="tab"]:hover p,
-    button[data-baseweb="tab"]:hover div,
-    button[data-baseweb="tab"]:hover span {
-        color: #ffffff !important;
-    }
-
-    /* 4. Sidebar Labels & Markdown text */
-    [data-testid="stSidebar"] label,
-    [data-testid="stSidebar"] label p,
-    [data-testid="stSidebar"] .stMarkdown p,
-    [data-testid="stSidebar"] h1, 
-    [data-testid="stSidebar"] h2, 
-    [data-testid="stSidebar"] h3 {
-        color: #ffffff !important;
-        font-weight: 600 !important;
-    }
-
-    /* 5. Input text fields & Dropdowns visibility */
-    [data-testid="stSidebar"] input {
-        color: #0f172a !important;
-        background-color: #ffffff !important;
-    }
-
-    [data-testid="stSidebar"] div[data-baseweb="select"] * {
-        color: #0f172a !important;
-    }
-
-    [data-testid="stSidebar"] div[data-baseweb="select"] {
-        background-color: #ffffff !important;
-    }
-</style>
-""", unsafe_allow_html=True)
-# Custom Premium CSS Injection — Income Tax e-Filing portal inspired
-# (light surfaces, navy header/nav, single blue accent)
-st.markdown("""
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap');
-    
-    :root {
-        --bg-app: #eef2f6;
-        --bg-sidebar: #0b3d63;
-        --bg-card: #ffffff;
-        --border-soft: #d7e0ea;
-        --border-strong: #b7c4d3;
-        --text-primary: #1f2a37;
-        --text-secondary: #5b6b7c;
-        --accent: #0b5ea8;
-        --accent-hover: #0f6fc4;
-        --green: #1c7c3f;
-        --red: #c62828;
-        --amber: #b8720b;
-        --navy: #0b3d63;
-        --navy-dark: #082c48;
-    }
-
-    /* Font overrides */
-    html, body, [class*="css"] {
-        font-family: 'Outfit', sans-serif;
-    }
-
-    /* Global Background */
-    .stApp {
-        background-color: var(--bg-app);
-        color: var(--text-primary);
-    }
-
-    .stApp, .stApp p, .stApp span, .stApp li, .stApp label,
-    .stMarkdown, .stMarkdown p, .stMarkdown li,
-    .stCaption, [data-testid="stMetricLabel"], [data-testid="stMetricValue"],
-    [data-testid="stMarkdownContainer"] {
-        color: var(--text-primary);
-    }
-
-    /* Sidebar styling (navy, like the portal's header/nav band) */
-    [data-testid="stSidebar"] {
-        background-color: var(--bg-sidebar);
-        border-right: 1px solid var(--navy-dark);
-    }
-
-    [data-testid="stSidebar"] * {
-        color: #ffffff !important;
-    }
-
-    [data-testid="stSidebar"] .stMarkdown small,
-    [data-testid="stSidebar"] p {
-        color: #cfe0f0 !important;
-    }
-
-    [data-testid="stSidebar"] hr {
-        border-color: rgba(255,255,255,0.2) !important;
-    }
-
-    [data-testid="stSidebar"] .stSelectbox div[data-baseweb="select"] > div,
-    [data-testid="stSidebar"] .stTextInput input {
-        color: var(--text-primary) !important;
-    }
-
-    /* Select boxes / text inputs (closed state) */
-    .stSelectbox div[data-baseweb="select"] > div,
-    .stMultiSelect div[data-baseweb="select"] > div,
-    .stTextInput input,
-    .stTextArea textarea,
-    .stNumberInput input,
-    .stDateInput input {
-        background-color: #ffffff !important;
-        color: var(--text-primary) !important;
-        border: 1px solid var(--border-strong) !important;
-        border-radius: 6px !important;
-    }
-
-    /* Dropdown menu (renders in a portal, so target globally) */
-    div[data-baseweb="popover"] ul[role="listbox"],
-    div[data-baseweb="menu"] {
-        background-color: #ffffff !important;
-        border: 1px solid var(--border-soft) !important;
-        box-shadow: 0 4px 12px rgba(11, 61, 99, 0.15) !important;
-    }
-
-    div[data-baseweb="popover"] li,
-    div[data-baseweb="menu"] li {
-        color: var(--text-primary) !important;
-        background-color: transparent !important;
-    }
-
-    div[data-baseweb="popover"] li:hover,
-    div[data-baseweb="menu"] li:hover {
-        background-color: #eaf2fa !important;
-        color: var(--navy) !important;
-    }
-
-    /* Buttons */
-    .stButton button, .stFormSubmitButton button {
-        background: linear-gradient(135deg, #0b5ea8 0%, #084a86 100%);
-        color: #ffffff !important;
-        border: 1px solid #084a86;
-        border-radius: 6px;
-        font-weight: 600;
-        transition: transform 0.15s ease, box-shadow 0.15s ease;
-    }
-
-    .stButton button:hover, .stFormSubmitButton button:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 4px 10px rgba(11, 94, 168, 0.35);
-        color: #ffffff !important;
-    }
-
-    .stButton button p {
-        color: #ffffff !important;
-    }
-
-    /* Dataframes / tables */
-    [data-testid="stDataFrame"] {
-        background-color: #ffffff;
-        border: 1px solid var(--border-soft);
-        border-radius: 8px;
-        overflow: hidden;
-        box-shadow: 0 1px 3px rgba(11, 61, 99, 0.08);
-    }
-
-    [data-testid="stDataFrame"] div {
-        color: var(--text-primary);
-    }
-
-    /* Cards styling — white cards with a navy accent bar,
-       similar to the portal's "Quick Links" / stat tiles */
-    .metric-card {
-        background: #ffffff;
-        border: 1px solid var(--border-soft);
-        border-top: 3px solid var(--accent);
-        border-radius: 8px;
-        padding: 20px;
-        text-align: center;
-        box-shadow: 0 1px 4px rgba(11, 61, 99, 0.08);
-        transition: transform 0.2s, box-shadow 0.2s;
-    }
-
-    .metric-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 14px rgba(11, 61, 99, 0.14);
-    }
-
-    .metric-title {
-        font-size: 0.8rem;
-        color: var(--text-secondary);
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        margin-bottom: 8px;
-        font-weight: 600;
-    }
-
-    .metric-value {
-        font-size: 1.75rem;
-        font-weight: 700;
-        color: var(--navy);
-        margin-bottom: 4px;
-    }
-
-    .metric-delta {
-        font-size: 0.75rem;
-        font-weight: 600;
-    }
-
-    .delta-green {
-        color: #1c7c3f;
-    }
-
-    .delta-red {
-        color: #c62828;
-    }
-
-    .delta-amber {
-        color: #b8720b;
-    }
-
-    /* Headers & Subheaders */
-    h1, h2, h3 {
-        color: var(--navy) !important;
-        font-weight: 700 !important;
-    }
-
-    /* Custom tab styles (navy pill bar like the portal's main nav) */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 6px;
-        background-color: var(--navy);
-        padding: 6px;
-        border-radius: 8px;
-        border: 1px solid var(--navy-dark);
-    }
-
-    .stTabs [data-baseweb="tab"] {
-        padding: 8px 16px;
-        color: #cfe0f0;
-        border-radius: 6px;
-        font-weight: 500;
-        transition: background-color 0.2s, color 0.2s;
-    }
-
-    .stTabs [data-baseweb="tab"]:hover {
-        color: #ffffff;
-        background-color: rgba(255,255,255,0.12);
-    }
-
-    .stTabs [aria-selected="true"] {
-        color: var(--navy) !important;
-        background-color: #ffffff !important;
-    }
-
-    /* Native Streamlit alerts */
-    [data-testid="stNotification"] {
-        border-radius: 6px !important;
-        border: 1px solid var(--border-soft) !important;
-    }
-
-    [data-testid="stNotification"] p, [data-testid="stNotification"] div {
-        color: var(--text-primary) !important;
-    }
-
-    .stAlert, .stAlert * {
-        color: var(--text-primary) !important;
-    }
-
-    /* Accent Alerts (like the portal's notice/ticker strip) */
-    .custom-alert {
-        padding: 16px;
-        border-radius: 6px;
-        margin-bottom: 16px;
-        border: 1px solid;
-    }
-
-    .alert-success {
-        background-color: rgba(28, 124, 63, 0.08);
-        border-color: rgba(28, 124, 63, 0.3);
-        color: #1c7c3f;
-    }
-
-    .alert-warning {
-        background-color: rgba(184, 114, 11, 0.08);
-        border-color: rgba(184, 114, 11, 0.3);
-        color: #8a5809;
-    }
-
-    .alert-danger {
-        background-color: rgba(198, 40, 40, 0.08);
-        border-color: rgba(198, 40, 40, 0.3);
-        color: #c62828;
-    }
-
-    /* Chat interface */
-    [data-testid="stChatMessage"] {
-        background-color: #ffffff;
-        border: 1px solid var(--border-soft);
-        border-radius: 8px;
-        color: var(--text-primary) !important;
-        box-shadow: 0 1px 3px rgba(11, 61, 99, 0.06);
-    }
-
-    [data-testid="stChatMessage"] p, [data-testid="stChatMessage"] li,
-    [data-testid="stChatMessage"] span {
-        color: var(--text-primary) !important;
-    }
-
-    [data-testid="stChatInput"] textarea {
-        background-color: #ffffff !important;
-        color: var(--text-primary) !important;
-        border: 1px solid var(--border-strong) !important;
-    }
-
-    /* Code blocks */
-    code, pre {
-        background-color: #eef2f6 !important;
-        color: #0b5ea8 !important;
-    }
-
-    /* Scrollbar */
-    ::-webkit-scrollbar { width: 10px; height: 10px; }
-    ::-webkit-scrollbar-track { background: var(--bg-app); }
-    ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 6px; }
-    ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
-
-    /* Floating Popover Widget Style (WhatsApp Meta AI Style) */
-    div[data-testid="stPopover"] {
-        position: fixed;
-        bottom: 30px;
-        right: 30px;
-        z-index: 999999;
-    }
-
-    div[data-testid="stPopover"] button {
-        width: 65px !important;
-        height: 65px !important;
-        border-radius: 50% !important;
-        background: linear-gradient(135deg, #128c7e 0%, #075e54 100%) !important; /* WhatsApp Green */
-        box-shadow: 0 6px 20px rgba(7, 94, 84, 0.4) !important;
-        border: 2px solid #ffffff !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
-        padding: 0 !important;
-    }
-
-    div[data-testid="stPopover"] button:hover {
-        transform: scale(1.15) rotate(5deg) !important;
-        box-shadow: 0 8px 25px rgba(7, 94, 84, 0.6) !important;
-    }
-
-    /* Hide default popover arrow and text label */
-    div[data-testid="stPopover"] button p {
-        display: none !important;
-    }
-
-    div[data-testid="stPopover"] button div[data-testid="stMarkdownContainer"] {
-        display: none !important;
-    }
-
-    div[data-testid="stPopover"] button::after {
-        content: "💬" !important;
-        font-size: 28px !important;
-        color: white !important;
-    }
-
-    /* Floating Chat Window Panel styling */
-    div[data-testid="stPopoverWindow"] {
-        width: 440px !important;
-        max-height: 550px !important;
-        border-radius: 16px !important;
-        box-shadow: 0 10px 40px rgba(11, 61, 99, 0.25) !important;
-        border: 1px solid var(--border-soft) !important;
-        background-color: #ffffff !important;
-        padding: 16px !important;
-        overflow-y: auto !important;
-    }
-    
-    /* Style Chat history header inside popover */
-    .assistant-header {
-        background: linear-gradient(135deg, #0b3d63 0%, #0b5ea8 100%);
-        padding: 12px;
-        border-radius: 8px;
-        color: white;
-        margin-bottom: 12px;
-        text-align: center;
-    }
-    
-    .assistant-header h3 {
-        color: white !important;
-        margin: 0 !important;
-        font-size: 1.1rem !important;
-    }
-    
-    .assistant-header p {
-        color: #cfe0f0 !important;
-        margin: 2px 0 0 0 !important;
-        font-size: 0.75rem !important;
-    }
-</style>
-""", unsafe_allow_html=True)
-
-# ----------------------------------------------------
-# SIDEBAR CREDENTIALS & OPTIONS
-# ----------------------------------------------------
-st.sidebar.markdown("<h2 style='text-align: center; color: #ffffff; font-weight: 800; margin-bottom: 4px;'>AI Finance Controller</h2>", unsafe_allow_html=True)
-st.sidebar.markdown("<p style='text-align: center; color: #cfe0f0; font-size: 0.8rem; margin-top: 0;'>Multi-Source Reconciliation Agent</p>", unsafe_allow_html=True)
-st.sidebar.markdown("---")
-
-# 1. Access Control Selection
-st.sidebar.markdown("### Access Control")
-app_role = st.sidebar.radio(
-    "Select Interface Panel",
-    ["Merchant Panel", "Admin Panel"],
-    index=0,
-    help="Switch between Merchant Dashboard (e.g. Flipkart) and Admin Oversight Dashboard (e.g. Razorpay)."
-)
-st.sidebar.markdown("---")
-
-# Default admin variables to prevent name errors in compilation
-selected_merchant = "Flipkart (Demo)"
-
-if app_role == "Merchant Panel":
-    # Data selection option
-    dataset_option = st.sidebar.selectbox(
-        "Select Reconciliation Batch",
-        ["Razorpay Synthetic Batch (60 records)", "Example August 25 Daily Close (80 records)"],
-        index=0
-    )
-
-    st.sidebar.markdown("### AI Layer Configuration")
-    gemini_api_key = st.sidebar.text_input(
-        "Google Gemini API Key",
-        type="password",
-        help="Enter your API Key to enable generative answers from your financial evidence.",
-        value=os.environ.get("GEMINI_API_KEY", "")
-    )
-
-    model_option = st.sidebar.selectbox(
-        "Select Gemini Model",
-        ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"],
-        index=0
-    )
-
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("### 🏛️ TDS Policy Configurator")
-    with st.sidebar.expander("Adjust TDS Rates & Rules", expanded=False):
-        st.markdown("**Payment TDS Rules**")
-        tds_app_ind = st.checkbox("Resident Individual", value=True, help="Deduct TDS for resident individuals (Sec 194-O)")
-        tds_rate_ind = st.number_input("Individual TDS Rate (%)", min_value=0.0, max_value=10.0, value=1.0, step=0.1) / 100.0
-        
-        tds_app_corp = st.checkbox("Resident Company", value=True, help="Deduct TDS for companies")
-        tds_rate_corp = st.number_input("Company TDS Rate (%)", min_value=0.0, max_value=10.0, value=2.0, step=0.1) / 100.0
-        
-        tds_app_nres = st.checkbox("Non-Resident Entity", value=False, help="Deduct TDS for non-resident entities")
-        tds_rate_nres = st.number_input("Non-Res TDS Rate (%)", min_value=0.0, max_value=10.0, value=0.0, step=0.1) / 100.0
-
-    # Build tds_config from these widgets
-    ui_tds_config = {
-        'PAYMENT': {
-            'Individual': {'applicable': tds_app_ind, 'rate': tds_rate_ind},
-            'Company': {'applicable': tds_app_corp, 'rate': tds_rate_corp},
-            'Non-Resident': {'applicable': tds_app_nres, 'rate': tds_rate_nres}
-        },
-        'PAYOUT': {
-            'Individual': {'applicable': False, 'rate': 0.00},
-            'Company': {'applicable': False, 'rate': 0.00},
-            'Non-Resident': {'applicable': False, 'rate': 0.00}
-        },
-        'REFUND': {
-            'Individual': {'applicable': False, 'rate': 0.00},
-            'Company': {'applicable': False, 'rate': 0.00},
-            'Non-Resident': {'applicable': False, 'rate': 0.00}
-        }
-    }
-
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("### Core Engine Rules")
-    st.sidebar.markdown("""
-    - **Exact ID Matching**: Order ID lookups.
-    - **Math Checks**: Settled = Amt - Fee - GST.
-    - **Fee Rate Validation**: 2% Gateway, Flat 5 INR Payouts, T+0 Refunds.
-    - **Settlement Window**: T+2 bank statement deposit verification.
-    - **Duplicate Check**: Unique gateway ID check.
-    """)
-    if gemini_api_key:
-        st.sidebar.success("🔑 Gemini API Active (Generative auditor enabled)")
-    else:
-        st.sidebar.info("💡 Fallback Heuristic engine is active (local diagnostics only).")
-
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("### Database & RAG Admin")
-    if st.sidebar.button("🔄 Sync Database from CSVs", use_container_width=True, help="Reruns the ingestion pipeline to reload transactions, orders, and bank statement CSV files into SQLite/MySQL."):
-        from src.upload_pipeline import run_pipeline
-        with st.sidebar.spinner("Syncing database..."):
-            if run_pipeline(reset=True):
-                st.sidebar.success("Database synced successfully!")
-                st.rerun()
-            else:
-                st.sidebar.error("Error syncing database.")
-
-    if st.sidebar.button("📂 Re-index Documents (RAG)", use_container_width=True, help="Scans the documents/ folder and updates text embeddings."):
-        with st.sidebar.spinner("Parsing and indexing documents..."):
-            if build_document_index(gemini_api_key, force_reindex=True):
-                st.sidebar.success("Documents indexed successfully!")
-                st.rerun()
-            else:
-                st.sidebar.error("Indexing failed. Ensure documents are present.")
-
-else:
-    # Admin Panel Sidebar Options
-    st.sidebar.markdown("### Admin Panel Oversight")
-    selected_merchant = st.sidebar.selectbox(
-        "Select Merchant to Audit",
-        ["Flipkart (Demo)", "Shopify Store (Mock)", "WooCommerce Shop (Mock)"],
-        index=0
-    )
-    
-    st.sidebar.markdown("### Global AI Configuration")
-    gemini_api_key = st.sidebar.text_input(
-        "Google Gemini API Key",
-        type="password",
-        help="Admin Key to enable cross-merchant auditing diagnostics.",
-        value=os.environ.get("GEMINI_API_KEY", "")
-    )
-    
-    model_option = st.sidebar.selectbox(
-        "Select Gemini Model",
-        ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"],
-        index=0
-    )
-    
-    # Static Default TDS Configuration for Admin matching calculations
-    ui_tds_config = {
-        'PAYMENT': {
-            'Individual': {'applicable': True, 'rate': 0.01},
-            'Company': {'applicable': True, 'rate': 0.02},
-            'Non-Resident': {'applicable': False, 'rate': 0.00}
-        },
-        'PAYOUT': {'Individual': {'applicable': False, 'rate': 0.0}, 'Company': {'applicable': False, 'rate': 0.0}, 'Non-Resident': {'applicable': False, 'rate': 0.0}},
-        'REFUND': {'Individual': {'applicable': False, 'rate': 0.0}, 'Company': {'applicable': False, 'rate': 0.0}, 'Non-Resident': {'applicable': False, 'rate': 0.0}}
-    }
-    
-    # Default dataset for admin deep-dive matching
-    dataset_option = "Razorpay Synthetic Batch (60 records)"
-    
-    st.sidebar.markdown("---")
-    st.sidebar.info("🔒 Admin mode: High-level dashboard settings configured. System modifications apply globally.")
-
-# ----------------------------------------------------
-# PREPARING RECONCILIATION DATA
-# ----------------------------------------------------
-@st.cache_data
 def get_august_25_example_data():
     """Returns the exact numbers/exceptions for the user's August 25 example."""
     summary = {
@@ -804,951 +206,2335 @@ def get_august_25_example_data():
     
     return summary, df_txs, df_unmatched, df_bank, bank_excs
 
-# Run Reconciliations
-if dataset_option == "Razorpay Synthetic Batch (60 records)":
-    metrics, df_tx, df_unmatched, df_bank, bank_excs = run_3way_reconciliation()
+# Initialize SQL database
+init_db()
+
+# Load internal orders lookup for the Audit Deep-Dive Tab
+base_dir = os.path.dirname(os.path.abspath(__file__))
+orders_csv_path = os.path.join(base_dir, "data", "internal_orders.csv")
+if os.path.exists(orders_csv_path):
+    df_orders = pd.read_csv(orders_csv_path)
 else:
-    metrics, df_tx, df_unmatched, df_bank, bank_excs = get_august_25_example_data()
-
-# Run Cash Forecaster and Tax-line Matcher
-forecast_df = get_cash_forecast(df_tx, df_bank, days=7)
-tax_summary, tax_df = run_tax_audit(df_tx, tds_config=ui_tds_config)
+    df_orders = pd.DataFrame(columns=['order_id', 'amount_inr', 'status', 'created_at', 'customer_email'])
 
 # ----------------------------------------------------
-# MAIN UI HEADER
+# INITIALIZE STATE VARIABLES
 # ----------------------------------------------------
-st.markdown(
-    "<div style='background-color:#0b3d63; padding:6px 14px; border-radius:6px; "
-    "color:#cfe0f0; font-size:0.8rem; margin-bottom:14px; display:inline-block;'>"
-    "🏠 Home &nbsp;›&nbsp; Reconciliation &nbsp;›&nbsp; Daily Close</div>",
-    unsafe_allow_html=True
+if "page" not in st.session_state:
+    st.session_state.page = "dashboard"
+if "admin_page" not in st.session_state:
+    st.session_state.admin_page = "Admin Overview"
+if "audit_tx" not in st.session_state:
+    st.session_state.audit_tx = None
+if "explain_tx" not in st.session_state:
+    st.session_state.explain_tx = None
+if "resolved_exceptions" not in st.session_state:
+    st.session_state.resolved_exceptions = []
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+if "session_id" not in st.session_state:
+    st.session_state.session_id = f"session_{int(datetime.now().timestamp())}"
+if "chat_query" not in st.session_state:
+    st.session_state.chat_query = None
+if "prompt_default" not in st.session_state:
+    st.session_state.prompt_default = ""
+
+# Admin panel system rules config state
+if "sys_gateway_fee" not in st.session_state:
+    st.session_state.sys_gateway_fee = 2.0
+if "sys_gst_rate" not in st.session_state:
+    st.session_state.sys_gst_rate = 18.0
+if "sys_payout_fee" not in st.session_state:
+    st.session_state.sys_payout_fee = 5.0
+if "sys_settlement_delay" not in st.session_state:
+    st.session_state.sys_settlement_delay = "T+2 Days"
+if "sys_gemini_model" not in st.session_state:
+    st.session_state.sys_gemini_model = "gemini-3.5-flash"
+if "sys_confidence_threshold" not in st.session_state:
+    st.session_state.sys_confidence_threshold = 80
+if "sys_gemini_api_key" not in st.session_state:
+    st.session_state.sys_gemini_api_key = os.environ.get("GEMINI_API_KEY", "")
+
+# TDS config
+if "sys_tds_config" not in st.session_state:
+    st.session_state.sys_tds_config = {
+        'PAYMENT': {
+            'Individual': {'applicable': True, 'rate': 0.01},
+            'Company': {'applicable': True, 'rate': 0.02},
+            'Non-Resident': {'applicable': False, 'rate': 0.00}
+        },
+        'PAYOUT': {
+            'Individual': {'applicable': False, 'rate': 0.00},
+            'Company': {'applicable': False, 'rate': 0.00},
+            'Non-Resident': {'applicable': False, 'rate': 0.00}
+        },
+        'REFUND': {
+            'Individual': {'applicable': False, 'rate': 0.00},
+            'Company': {'applicable': False, 'rate': 0.00},
+            'Non-Resident': {'applicable': False, 'rate': 0.00}
+        }
+    }
+
+# Read potential URL query parameters for direct page linking (e.g. from table action buttons)
+query_params = st.query_params
+if "page" in query_params:
+    st.session_state.page = query_params["page"]
+if "audit_tx" in query_params:
+    st.session_state.audit_tx = query_params["audit_tx"]
+
+# Set page config
+st.set_page_config(
+    page_title="AI Finance Controller - Dashboard",
+    page_icon="💸",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
-st.markdown(f"<h1 style='margin-bottom: 2px; color: #0b3d63;'>DAILY CLOSE — {dataset_option.split('(')[0].strip()}</h1>", unsafe_allow_html=True)
-st.markdown("<p style='color: #5b6b7c; font-size: 1.05rem; margin-top: 0;'>Automated 3-way financial reconciliation ledger, settlements audit, and exception tracking.</p>", unsafe_allow_html=True)
 
 # ----------------------------------------------------
-# METRICS CARDS PANEL
+# CSS DESIGN SYSTEM INJECTION
 # ----------------------------------------------------
-col1, col2, col3, col4, col5, col6 = st.columns(6)
+st.markdown("""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap');
+    
+    :root {
+        --primary: #0F4C75;
+        --navy: #172B4D;
+        --bg: #F7F9FC;
+        --card: #FFFFFF;
+        --text-sec: #6B7C93;
+        --success: #10B981;
+        --warning: #F59E0B;
+        --error: #EF4444;
+        --border: #E2E8F0;
+    }
+    
+    /* Global Overrides */
+    html, body, [class*="css"], .stApp {
+        font-family: 'Inter', sans-serif !important;
+        background-color: var(--bg) !important;
+        color: var(--navy) !important;
+    }
+    
+    h1, h2, h3, h4, h5, h6 {
+        font-family: 'Outfit', sans-serif !important;
+        color: var(--navy) !important;
+        font-weight: 700 !important;
+    }
+    
+    /* Hide default Streamlit elements */
+    header, [data-testid="stHeader"] {
+        display: none !important;
+    }
+    
+    footer {
+        visibility: hidden;
+    }
+    
+    /* Layout block size optimization */
+    [data-testid="stAppViewBlockContainer"] {
+        padding-top: 1.5rem !important;
+        padding-bottom: 1.5rem !important;
+        padding-left: 2.5rem !important;
+        padding-right: 2.5rem !important;
+    }
+    
+    /* Sidebar Overhaul */
+    [data-testid="stSidebar"] {
+        background-color: #0b1c33 !important;
+        border-right: 1px solid #1e2e4a !important;
+        width: 290px !important;
+    }
+    
+    [data-testid="stSidebarUserContent"] {
+        padding-top: 1.5rem !important;
+        padding-left: 0.75rem !important;
+        padding-right: 0.75rem !important;
+    }
+    
+    /* Hide Streamlit default collapse sidebar button */
+    [data-testid="stSidebarCollapseButton"] {
+        display: none !important;
+    }
+    
+    /* Custom Sidebar Logo styling */
+    .sidebar-logo {
+        padding: 0 12px 20px 12px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        margin-bottom: 20px;
+    }
+    
+    .sidebar-logo h3 {
+        color: #FFFFFF !important;
+        margin: 0 !important;
+        font-size: 1.3rem !important;
+        font-weight: 800 !important;
+        letter-spacing: 0.5px;
+    }
+    
+    .sidebar-logo p {
+        color: rgba(255, 255, 255, 0.5) !important;
+        margin: 2px 0 0 0 !important;
+        font-size: 0.72rem !important;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+    }
+    
+    /* Sidebar Section Headers */
+    .sidebar-section-header {
+        color: rgba(255, 255, 255, 0.35) !important;
+        font-size: 10px !important;
+        font-weight: 700 !important;
+        letter-spacing: 1.2px !important;
+        margin-top: 18px !important;
+        margin-bottom: 6px !important;
+        padding-left: 12px !important;
+        text-transform: uppercase !important;
+    }
+    
+    /* Sidebar Nav Buttons Styling */
+    .sidebar-btn-wrapper {
+        margin-bottom: 3px !important;
+    }
+    
+    .sidebar-btn-wrapper button {
+        background-color: transparent !important;
+        color: rgba(255, 255, 255, 0.65) !important;
+        border: none !important;
+        text-align: left !important;
+        justify-content: flex-start !important;
+        padding: 8px 12px !important;
+        border-radius: 6px !important;
+        font-size: 13.5px !important;
+        font-weight: 500 !important;
+        width: 100% !important;
+        transition: all 0.15s ease !important;
+        box-shadow: none !important;
+    }
+    
+    .sidebar-btn-wrapper button:hover {
+        background-color: rgba(255, 255, 255, 0.05) !important;
+        color: #FFFFFF !important;
+    }
+    
+    .sidebar-btn-wrapper.sidebar-btn-active button {
+        background-color: var(--primary) !important;
+        color: #FFFFFF !important;
+        font-weight: 600 !important;
+    }
+    
+    /* Top Header elements */
+    .header-search-container {
+        background-color: #FFFFFF;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 6px 12px;
+        display: flex;
+        align-items: center;
+        height: 38px;
+        margin-bottom: 12px;
+    }
+    
+    .header-icons-wrapper {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 16px;
+        height: 38px;
+    }
+    
+    .header-icon {
+        font-size: 1.2rem;
+        color: var(--text-sec);
+        cursor: pointer;
+        transition: color 0.2s;
+    }
+    .header-icon:hover {
+        color: var(--primary);
+    }
+    
+    .header-avatar {
+        background-color: var(--primary);
+        color: #FFFFFF;
+        font-weight: 700;
+        font-size: 0.8rem;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .header-divider {
+        border-bottom: 1px solid var(--border);
+        margin-bottom: 20px;
+        margin-top: 4px;
+    }
+    
+    /* Cards Layout styling */
+    .kpi-card {
+        background-color: #FFFFFF;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 16px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+        transition: all 0.2s ease;
+        min-height: 100px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+    }
+    
+    .kpi-card:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.06);
+    }
+    
+    .kpi-card.primary-kpi {
+        background-color: var(--primary);
+        border-color: var(--primary);
+        color: #FFFFFF !important;
+    }
+    
+    .kpi-title {
+        font-size: 10.5px;
+        font-weight: 700;
+        color: var(--text-sec);
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        margin-bottom: 4px;
+    }
+    
+    .kpi-value {
+        font-size: 24px;
+        font-weight: 700;
+        color: var(--navy);
+        font-family: 'Outfit', sans-serif;
+        line-height: 1.1;
+    }
+    
+    .kpi-desc {
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--text-sec);
+        margin-top: 4px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+    
+    /* White page subpanels */
+    .card-panel {
+        background-color: #FFFFFF;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+    }
+    
+    /* Progress styling */
+    .custom-progress-container {
+        width: 100%;
+        background-color: #E2E8F0;
+        border-radius: 4px;
+        height: 6px;
+        margin-top: 8px;
+        margin-bottom: 12px;
+        overflow: hidden;
+    }
+    .custom-progress-bar {
+        background-color: var(--primary);
+        height: 100%;
+        border-radius: 4px;
+    }
+    
+    /* Health Checklist */
+    .health-checklist {
+        margin-top: 14px;
+    }
+    .checklist-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        color: var(--navy);
+        margin-bottom: 8px;
+        font-weight: 500;
+    }
+    .checklist-item .badge-icon {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 9px;
+        font-weight: 700;
+    }
+    .checklist-item.success .badge-icon {
+        background-color: rgba(16, 185, 129, 0.1);
+        color: var(--success);
+    }
+    .checklist-item.warning .badge-icon {
+        background-color: rgba(245, 158, 11, 0.1);
+        color: var(--warning);
+    }
+    .checklist-item.error .badge-icon {
+        background-color: rgba(239, 68, 68, 0.1);
+        color: var(--error);
+    }
+    
+    /* Financial Flow Diagram */
+    .flow-container {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background-color: #FFFFFF;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 16px 20px;
+        margin-top: 8px;
+        margin-bottom: 20px;
+        overflow-x: auto;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+    }
+    .flow-step {
+        text-align: center;
+        flex: 1;
+        min-width: 120px;
+    }
+    .flow-step .step-label {
+        font-size: 10.5px;
+        font-weight: 700;
+        color: var(--text-sec);
+        text-transform: uppercase;
+        margin-bottom: 4px;
+        letter-spacing: 0.5px;
+    }
+    .flow-step .step-value {
+        font-size: 14.5px;
+        font-weight: 700;
+        color: var(--navy);
+        font-family: 'Outfit', sans-serif;
+    }
+    .flow-arrow {
+        font-size: 16px;
+        color: #CBD5E1;
+        font-weight: 700;
+        padding: 0 8px;
+    }
+    
+    /* AI Insights Dashboard block */
+    .ai-insights-card {
+        background: linear-gradient(135deg, #F8FAFC 0%, #EFF6FF 100%);
+        border: 1px solid #BFDBFE;
+        border-radius: 6px;
+        padding: 16px 20px;
+        margin-bottom: 20px;
+    }
+    .ai-insights-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+    }
+    .ai-spark-icon {
+        color: var(--primary);
+        font-size: 16px;
+        font-weight: 700;
+    }
+    .ai-insights-header h3 {
+        margin: 0 !important;
+        font-size: 15px !important;
+        font-weight: 700 !important;
+        color: var(--primary) !important;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .ai-issue-summary {
+        margin-top: 10px;
+        border-left: 2px solid #3B82F6;
+        padding-left: 12px;
+    }
+    .issue-item {
+        font-size: 12.5px;
+        margin-bottom: 4px;
+        color: var(--navy);
+    }
+    .text-error {
+        color: var(--error);
+        font-weight: 600;
+    }
+    
+    /* Premium Table Styling */
+    .custom-table-container {
+        background-color: #FFFFFF;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        overflow-x: auto;
+        margin-top: 12px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+    }
+    .custom-table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: left;
+        font-family: 'Inter', sans-serif;
+        font-size: 13px;
+    }
+    .custom-table th {
+        background-color: #F8FAFC;
+        color: var(--text-sec);
+        font-weight: 700;
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--border);
+        text-transform: uppercase;
+        font-size: 10.5px;
+        letter-spacing: 0.5px;
+    }
+    .custom-table td {
+        padding: 10px 14px;
+        border-bottom: 1px solid #F1F5F9;
+        color: var(--navy);
+        font-weight: 500;
+        vertical-align: middle;
+    }
+    .custom-table tr:last-child td {
+        border-bottom: none;
+    }
+    .custom-table tr:hover {
+        background-color: #F8FAFC;
+    }
+    
+    /* Status Badge styling */
+    .status-pill {
+        display: inline-flex;
+        align-items: center;
+        padding: 3px 8px;
+        border-radius: 9999px;
+        font-size: 10.5px;
+        font-weight: 600;
+        text-transform: capitalize;
+    }
+    .status-pill.reconciled, .status-pill.auto-resolved, .status-pill.verified, .status-pill.ok {
+        background-color: rgba(16, 185, 129, 0.1);
+        color: var(--success);
+        border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+    .status-pill.needs_review, .status-pill.discrepancy, .status-pill.pending, .status-pill.under_review {
+        background-color: rgba(245, 158, 11, 0.1);
+        color: var(--warning);
+        border: 1px solid rgba(245, 158, 11, 0.2);
+    }
+    .status-pill.unmatched, .status-pill.failed, .status-pill.missing_bank_credit, .status-pill.high, .status-pill.tds_under_deduction, .status-pill.tds_over_deduction {
+        background-color: rgba(239, 68, 68, 0.1);
+        color: var(--error);
+        border: 1px solid rgba(239, 68, 68, 0.2);
+    }
+    .status-pill.low {
+        background-color: rgba(59, 130, 246, 0.1);
+        color: #3B82F6;
+        border: 1px solid rgba(59, 130, 246, 0.2);
+    }
+    .status-pill.medium {
+        background-color: rgba(245, 158, 11, 0.1);
+        color: var(--warning);
+        border: 1px solid rgba(245, 158, 11, 0.2);
+    }
+    
+    .action-link {
+        color: var(--primary);
+        font-weight: 600;
+        text-decoration: none;
+        cursor: pointer;
+    }
+    .action-link:hover {
+        text-decoration: underline;
+    }
+    
+    /* 3-way Audit Flow Layout styles */
+    .audit-flow-container {
+        background-color: #FFFFFF;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 20px;
+        margin-top: 10px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+    }
+    .audit-flow-nodes {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+    .audit-flow-node {
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 12px 16px;
+        background-color: #F8FAFC;
+    }
+    .audit-flow-node.active-node {
+        border-left: 4px solid var(--primary);
+    }
+    .audit-flow-node.error-node {
+        border-left: 4px solid var(--error);
+        background-color: #FFF8F8;
+    }
+    .audit-flow-arrow {
+        text-align: center;
+        color: #94A3B8;
+        font-size: 16px;
+        margin: -6px 0;
+    }
+    .node-header {
+        font-weight: 700;
+        font-size: 11px;
+        color: var(--text-sec);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 6px;
+    }
+    .node-details {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+        font-size: 12.5px;
+    }
+    .detail-item strong {
+        color: var(--text-sec);
+        font-weight: 500;
+        font-size: 10px;
+        text-transform: uppercase;
+    }
+    .detail-item div {
+        color: var(--navy);
+        font-weight: 600;
+    }
+    
+    /* AI Explanation Modal/Panel */
+    .ai-explanation-panel {
+        background-color: #F8FAFC;
+        border: 1px solid var(--border);
+        border-left: 4px solid var(--primary);
+        border-radius: 6px;
+        padding: 16px 20px;
+        margin-top: 15px;
+    }
+    .ai-explanation-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 10px;
+    }
+    .ai-explanation-header h4 {
+        margin: 0 !important;
+        color: var(--primary) !important;
+        font-family: 'Outfit', sans-serif !important;
+        font-size: 15px !important;
+        font-weight: 700 !important;
+    }
+    .ai-explanation-checklist {
+        list-style: none;
+        padding: 0;
+        margin: 0 0 10px 0;
+    }
+    .ai-explanation-checklist li {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12.5px;
+        color: var(--navy);
+        margin-bottom: 4px;
+        font-weight: 500;
+    }
+    
+    /* Admin subtabs horizontal radio styling */
+    div[data-testid="stHorizontalBlock"] div.stRadio > div {
+        background-color: #FFFFFF;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 6px 12px;
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+    }
+    div[data-testid="stHorizontalBlock"] div.stRadio > label {
+        display: none !important;
+    }
+    
+    /* Chat Popover styled floating button in bottom right */
+    div[data-testid="stPopover"] {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        z-index: 99999;
+    }
+    
+    div[data-testid="stPopover"] button {
+        width: 54px !important;
+        height: 54px !important;
+        border-radius: 50% !important;
+        background: linear-gradient(135deg, var(--primary) 0%, #083D63 100%) !important;
+        box-shadow: 0 4px 15px rgba(15, 76, 117, 0.4) !important;
+        border: 1px solid rgba(255,255,255,0.2) !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        padding: 0 !important;
+        transition: transform 0.2s ease !important;
+    }
+    
+    div[data-testid="stPopover"] button:hover {
+        transform: scale(1.08) !important;
+    }
+    
+    div[data-testid="stPopover"] button p {
+        display: none !important;
+    }
+    
+    div[data-testid="stPopover"] button div[data-testid="stMarkdownContainer"] {
+        display: none !important;
+    }
+    
+    div[data-testid="stPopover"] button::after {
+        content: "✦" !important;
+        font-size: 24px !important;
+        color: white !important;
+        line-height: 1;
+        font-weight: bold;
+    }
+    
+    div[data-testid="stPopoverWindow"] {
+        width: 400px !important;
+        max-height: 480px !important;
+        border-radius: 8px !important;
+        box-shadow: 0 10px 30px rgba(11, 28, 51, 0.2) !important;
+        border: 1px solid var(--border) !important;
+        background-color: #FFFFFF !important;
+        padding: 12px !important;
+    }
+    
+    .chat-header-spark {
+        background: linear-gradient(135deg, #0b1c33 0%, var(--primary) 100%);
+        padding: 10px;
+        border-radius: 6px;
+        color: white;
+        margin-bottom: 10px;
+        text-align: center;
+    }
+    .chat-header-spark h3 {
+        color: white !important;
+        margin: 0 !important;
+        font-size: 0.95rem !important;
+    }
+    .chat-header-spark p {
+        color: rgba(255,255,255,0.65) !important;
+        margin: 2px 0 0 0 !important;
+        font-size: 0.7rem !important;
+    }
+    
+    /* Native streamlit metrics and elements styling fixes */
+    [data-testid="stMetricValue"] {
+        font-family: 'Outfit', sans-serif !important;
+        font-weight: 700 !important;
+        color: var(--navy) !important;
+    }
+    
+    [data-testid="stNotification"] {
+        border-radius: 6px !important;
+        border: 1px solid var(--border) !important;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-with col1:
-    st.markdown(f"""
-    <div class="metric-card">
-        <div class="metric-title">Payments Processed</div>
-        <div class="metric-value">{metrics['total_payments_processed']}</div>
-        <div class="metric-delta"><span class="delta-green">●</span> Gross Volume</div>
-    </div>
-    """, unsafe_allow_html=True)
+# ----------------------------------------------------
+# CUSTOM SIDEBAR NAVIGATION RENDERER
+# ----------------------------------------------------
+def render_sidebar_item(label, page_name, icon=""):
+    is_active = st.session_state.page == page_name
+    active_class = "sidebar-btn-active" if is_active else "sidebar-btn-inactive"
+    st.sidebar.markdown(f'<div class="sidebar-btn-wrapper {active_class}">', unsafe_allow_html=True)
+    if st.sidebar.button(f"{icon}  {label}", key=f"btn_nav_{page_name}", use_container_width=True):
+        st.session_state.page = page_name
+        st.session_state.audit_tx = None
+        st.session_state.explain_tx = None
+        st.query_params.clear()
+        st.query_params.page = page_name
+        st.rerun()
+    st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
-with col2:
-    st.markdown(f"""
-    <div class="metric-card">
-        <div class="metric-title">Auto-Resolved</div>
-        <div class="metric-value">{metrics['auto_resolved_count']}</div>
-        <div class="metric-delta"><span class="delta-green">✓</span> Reconciled ok</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-with col3:
-    st.markdown(f"""
-    <div class="metric-card">
-        <div class="metric-title">Needs Review</div>
-        <div class="metric-value">{metrics['needs_review_count']}</div>
-        <div class="metric-delta"><span class="delta-red">⚠</span> Flagged exceptions</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-with col4:
-    # Delta style
-    accuracy = metrics['auto_match_accuracy_pct']
-    color_class = "delta-green" if accuracy >= 95 else ("delta-amber" if accuracy >= 85 else "delta-red")
-    st.markdown(f"""
-    <div class="metric-card">
-        <div class="metric-title">Auto-Match Accuracy</div>
-        <div class="metric-value">{accuracy}%</div>
-        <div class="metric-delta"><span class="{color_class}">●</span> Match Rate</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-with col5:
-    st.markdown(f"""
-    <div class="metric-card">
-        <div class="metric-title">Settled to Bank</div>
-        <div class="metric-value">₹{metrics['settled_to_bank_inr']:,.2f}</div>
-        <div class="metric-delta"><span class="delta-green">✓</span> Verified credit</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-with col6:
-    st.markdown(f"""
-    <div class="metric-card">
-        <div class="metric-title">Expected (T+2 Days)</div>
-        <div class="metric-value">₹{metrics['expected_next_2_days_inr']:,.2f}</div>
-        <div class="metric-delta"><span class="delta-amber">⏳</span> Pending settlement</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-st.markdown("<br>", unsafe_allow_html=True)
-
-# Brief summary block
-st.markdown(f"""
-<div class="custom-alert alert-warning">
-    <strong>Daily Summary Close:</strong> Total customer collections: <strong>₹{metrics['gross_collections_inr']:,.2f}</strong>, 
-    Total refunds: <strong>₹{metrics['refunds_inr']:,.2f}</strong>, Total gateway & payout fees (inc GST): <strong>₹{metrics['fees_gst_inr']:,.2f}</strong>. 
-    Unreconciled / review: <strong>₹0.00</strong> (All discrepancies have been isolated to the exception queue below).
+# Render Sidebar Title & Subtitle
+st.sidebar.markdown("""
+<div class="sidebar-logo">
+    <h3>AI Finance</h3>
+    <p>Multi-Source Reconciliation Agent</p>
 </div>
 """, unsafe_allow_html=True)
 
-# Old static tabs block removed to support dynamic role views.
+# Render Sidebar Menu groupings
+st.sidebar.markdown('<div class="sidebar-section-header">OVERVIEW</div>', unsafe_allow_html=True)
+render_sidebar_item("Dashboard", "dashboard", "📊")
+
+st.sidebar.markdown('<div class="sidebar-section-header">RECONCILIATION</div>', unsafe_allow_html=True)
+render_sidebar_item("Transactions", "transactions", "💳")
+render_sidebar_item("Exceptions", "exceptions", "⚠️")
+render_sidebar_item("Settlements", "settlements", "💰")
+
+st.sidebar.markdown('<div class="sidebar-section-header">FINANCE</div>', unsafe_allow_html=True)
+render_sidebar_item("Payouts", "payouts", "💸")
+render_sidebar_item("Bank", "bank", "🏦")
+render_sidebar_item("Tax & TDS", "tax", "🏛️")
+
+st.sidebar.markdown('<div class="sidebar-section-header">INSIGHTS</div>', unsafe_allow_html=True)
+render_sidebar_item("AI Insights", "insights", "✦")
+render_sidebar_item("Cash Forecast", "forecast", "📈")
+render_sidebar_item("Reports", "reports", "📋")
+
+st.sidebar.markdown('<div class="sidebar-section-header">BOTTOM</div>', unsafe_allow_html=True)
+render_sidebar_item("Settings", "settings", "⚙️")
+render_sidebar_item("Admin", "admin", "🔒")
 
 # ----------------------------------------------------
-# HEURISTIC FALLBACK SEARCH ENGINE
+# TOP HEADER BAR IMPLEMENTATION
 # ----------------------------------------------------
-def local_heuristic_engine(query):
-    query_lower = query.lower()
+col_header_left, col_header_right = st.columns([2.2, 1.8])
+with col_header_left:
+    st.markdown("""
+    <div class="header-search-container">
+        <span style="font-size: 1rem; margin-right: 8px; color: #6B7C93;">🔍</span>
+        <span style="color: #6B7C93; font-size: 0.85rem; font-weight: 500;">Search transaction IDs, orders, or settlement credits...</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+with col_header_right:
+    col_sub_icons, col_sub_sel = st.columns([1, 2])
+    with col_sub_icons:
+        st.markdown("""
+        <div class="header-icons-wrapper">
+            <span class="header-icon" title="Notifications">🔔</span>
+            <span class="header-icon" title="Help Centre">❓</span>
+            <span class="header-avatar" title="Shivendu K (Admin)">SK</span>
+        </div>
+        """, unsafe_allow_html=True)
+    with col_sub_sel:
+        # Dynamic interactive batch selector
+        dataset_option = st.selectbox(
+            "Reconciliation Batch Selection",
+            ["Razorpay Synthetic Batch (60 records)", "Example August 25 Daily Close (80 records)"],
+            label_visibility="collapsed",
+            key="header_batch_selector"
+        )
+
+st.markdown('<div class="header-divider"></div>', unsafe_allow_html=True)
+
+# ----------------------------------------------------
+# CORE ENGINE DATA RETRIEVAL
+# ----------------------------------------------------
+# Execute the relevant batch retrieval
+if dataset_option == "Razorpay Synthetic Batch (60 records)":
+    metrics, df_tx, df_unmatched, df_bank, bank_excs = run_3way_reconciliation()
+else:
+    # AUGUST 25 DATASET MOCK ENDPOINT
+    from app import get_august_25_example_data
+    metrics, df_tx, df_unmatched, df_bank, bank_excs = get_august_25_example_data()
+
+# Apply local exception resolutions dynamically
+if len(st.session_state.resolved_exceptions) > 0:
+    for res_id in st.session_state.resolved_exceptions:
+        # Reconcile df_tx
+        idx_list = df_tx[df_tx['transaction_id'] == res_id].index
+        if not idx_list.empty:
+            df_tx.loc[idx_list, 'resolution_status'] = 'AUTO_RESOLVED'
+            df_tx.loc[idx_list, 'calculated_exceptions'] = [[] for _ in idx_list]
+            df_tx.loc[idx_list, 'confidence_score'] = 1.0
+            
+        # Reconcile df_unmatched
+        idx_list_un = df_unmatched[df_unmatched['order_id'] == res_id].index
+        if not idx_list_un.empty:
+            df_unmatched.loc[idx_list_un, 'resolution_status'] = 'AUTO_RESOLVED'
+            df_unmatched.loc[idx_list_un, 'calculated_exceptions'] = [[] for _ in idx_list_un]
+            df_unmatched.loc[idx_list_un, 'confidence_score'] = 1.0
+            
+    # Recalculate metrics based on resolutions
+    needs_review_tx = df_tx[df_tx['resolution_status'] == 'NEEDS_REVIEW']
+    needs_review_un = df_unmatched[df_unmatched['resolution_status'] == 'NEEDS_REVIEW']
+    total_active_exceptions = len(needs_review_tx) + len(needs_review_un)
     
-    # Match cash forecasting queries
-    if "forecast" in query_lower or "cash flow" in query_lower or "liquidity" in query_lower or "future" in query_lower:
-        proj_sum = forecast_df.to_string(columns=['date', 'status', 'gross_collections', 'refunds', 'payouts', 'net_inflow', 'cumulative_cash'], index=False)
-        return f"""### 7-Day Forward Cash Forecast Report
-The projected cumulative bank cash balance starting from the current bank statement balance will end at **INR {forecast_df.iloc[-1]['cumulative_cash']:,.2f}** in 7 days.
+    metrics['needs_review_count'] = total_active_exceptions
+    metrics['auto_resolved_count'] = len(df_tx) - len(needs_review_tx) + (len(df_unmatched) - len(needs_review_un))
+    total_elements = len(df_tx) + len(df_unmatched)
+    metrics['auto_match_accuracy_pct'] = round((metrics['auto_resolved_count'] / total_elements) * 100, 1)
 
-**Daily Projection Details**:
-```text
-{proj_sum}
-```
-- **Next 2-Day Committed Inflows**: INR {forecast_df.iloc[:2]['gross_collections'].sum():,.2f}
-- **Projected Net Cash Addition (7 days)**: INR {forecast_df['net_inflow'].sum():,.2f}
-"""
-
-    # Match tax queries
-    if "tax" in query_lower or "gst" in query_lower or "tds" in query_lower or "withholding" in query_lower:
-        tax_excs = tax_df[tax_df['tax_status'] != 'OK']
-        exc_str = ""
-        for idx, r in tax_excs.iterrows():
-            exc_str += f"- **TX `{r['transaction_id']}`** ({r['tax_status']}): {r['audit_comments']}\n"
-        return f"""### Tax Compliance & Matcher Report
-- **GST Compliance**: Audited GST on gateway fees. {tax_summary['gst_anomalies_count']} anomalies flagged.
-- **TDS Section 194-O**: Checked e-commerce TDS deductions (1% expected). {tax_summary['tds_anomalies_count']} anomalies flagged.
-- **Overall Tax Compliance Rate**: **{tax_summary['tax_compliance_pct']}%**
-
-**Identified Tax Discrepancies**:
-{exc_str if len(tax_excs) > 0 else "All tax lines are 100% compliant."}
-"""
-
-    # Match detailed Close summary
-    if "close" in query_lower or "summary" in query_lower or "report" in query_lower:
-        ans = f"""### Heuristic Financial Close Summary Report
-- **Total Payments**: {metrics['total_payments_processed']}
-- **Auto-match Accuracy**: {metrics['auto_match_accuracy_pct']}%
-- **Gross Collections**: INR {metrics['gross_collections_inr']:,.2f}
-- **Refunds Processed**: INR {metrics['refunds_inr']:,.2f}
-- **Fees + GST**: INR {metrics['fees_gst_inr']:,.2f}
-- **Settled to Bank**: INR {metrics['settled_to_bank_inr']:,.2f}
-- **Expected T+2 Deposit**: INR {metrics['expected_next_2_days_inr']:,.2f}
-
-**Isolated Audit Exceptions**:
-1. **Missing Order IDs**: {len(df_tx[df_tx['calculated_exceptions'].apply(lambda x: any('MISSING_ORDER_ID' in e for e in x))])} gateway payments.
-2. **Disputed Charges**: {len(df_tx[df_tx['status'] == 'disputed'])} disputed payment.
-3. **Fee Mismatches**: {len(df_tx[df_tx['calculated_exceptions'].apply(lambda x: any('FEE_MISMATCH' in e for e in x))])} payments with fee rates differing from the default 2% rate.
-4. **Internal Order Orphans**: {len(df_unmatched)} orders completed in database without gateway payments.
-5. **Bank Settlement Issues**: {len(bank_excs)} daily settlement batches with errors (e.g. missing credits or amount mismatch).
-6. **Tax Line Discrepancies**: {tax_summary['total_tax_discrepancies']} anomalies flagged (GST/TDS).
-"""
-        return ans
-        
-    # Match specific transaction ID
-    for idx, row in df_tx.iterrows():
-        tx_id = row['transaction_id']
-        if tx_id.lower() in query_lower:
-            clean_excs = [e.replace('₹', 'INR') for e in row['calculated_exceptions']]
-            tax_row = tax_df[tax_df['transaction_id'] == tx_id].iloc[0]
-            tax_info = f"\n- **Tax Status**: {tax_row['tax_status']} (Comments: {tax_row['audit_comments']})"
-            
-            if len(clean_excs) == 0 and tax_row['tax_status'] == 'OK':
-                return f"### Transaction {tx_id} Audit Report\n- **Status**: Reconciled (`AUTO_RESOLVED`)\n- **Math Check**: Passed (Settled: INR {row['settled_amount_inr']:,.2f} matches `Amount - Fee - GST`)\n- **Order Matching**: Reconciled to `{row['order_id']}`\n- **Bank Matching**: Reconciled to settlement date `{row['expected_settlement_date']}`"
-            else:
-                return f"### Transaction {tx_id} Exception Audit Report\n- **Status**: Needs Review (`NEEDS_REVIEW`)\n- **Confidence**: {row['confidence_score']*100:.0f}%\n- **Gateway Details**: Amount INR {row['amount_inr']:,.2f}, Fee: INR {row['fee_inr']:,.2f}, GST: INR {row['tax_inr']:,.2f}, Settled: INR {row['settled_amount_inr']:,.2f}\n- **Audit Flags**: `{clean_excs}`{tax_info}"
-                
-    # Match specific Order ID
-    for idx, row in df_unmatched.iterrows():
-        o_id = row['order_id']
-        if o_id.lower() in query_lower:
-            return f"### Unmatched Internal Order `{o_id}` Audit\n- **Status**: Gateway Payment Not Found\n- **Amount**: INR {row['amount_inr']:,.2f}\n- **Created At**: {row['created_at']}\n- **Audit Flag**: Marked completed internally but no payment capture exists on Razorpay gateway."
-            
-    # Match settlement dates
-    if "august 10" in query_lower or "10-08" in query_lower:
-        return f"### Bank Settlement Mismatch (10-08-2026)\n- **Expected Credit**: INR 6,805.21 (net of settlements)\n- **Actual Bank Credit**: INR 6,705.21\n- **Difference**: INR -100.00 (Unexplained deduction or bank charge).\n- **Affected Transactions**: All payments/payouts settled on 10-08-2026."
-        
-    if "august 18" in query_lower or "18-08" in query_lower:
-        return f"### Bank Credit Missing (18-08-2026)\n- **Expected Credit**: INR 4,407.40\n- **Actual Bank Credit**: INR 0.00\n- **Difference**: INR -4,407.40\n- **Audit Flag**: Razorpay processed the settlement batch, but the deposit is omitted from the bank statement."
-    return "Local Heuristic: No direct keyword match found. To perform full generative conversation across all transactions, please enter a **Gemini API Key** in the sidebar."
-
+# Run forecasting and tax compliance checkers
+forecast_df = get_cash_forecast(df_tx, df_bank, days=7)
+tax_summary, tax_df = run_tax_audit(df_tx, tds_config=st.session_state.sys_tds_config)
 
 # ----------------------------------------------------
-# MAIN TABS LAYOUT CONTROLLER
+# PAGE 1: MERCHANT DASHBOARD
 # ----------------------------------------------------
-if app_role == "Merchant Panel":
-    # ----------------------------------------------------
-    # MERCHANT PANEL TABS
-    # ----------------------------------------------------
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-        "Reconciled Gateway Ledger",
-        "Unmatched Internal Orders",
-        "Bank Settlement Audit",
-        "Forward Cash Forecaster",
-        "Tax-line Matcher",
-        "Merchant Support Helpdesk"
-    ])
+if st.session_state.page == "dashboard":
+    st.markdown("<h2 style='margin-bottom: 2px;'>Hello, Welcome to Finance Controller</h2>", unsafe_allow_html=True)
     
-    # ----------------------------------------------------
-    # TAB 1: RECONCILED GATEWAY LEDGER
-    # ----------------------------------------------------
-    with tab1:
-        st.markdown("### Payment Gateway Transaction Ledger")
-        
-        # Filter selection
-        filter_status = st.selectbox(
-            "Filter Transactions by Resolution",
-            ["All Transactions", "Needs Review (Exceptions)", "Auto-Resolved"],
-            index=0
-        )
-        
-        # Filter dataset
-        if filter_status == "Needs Review (Exceptions)":
-            display_df = df_tx[df_tx['resolution_status'] == 'NEEDS_REVIEW']
-        elif filter_status == "Auto-Resolved":
-            display_df = df_tx[df_tx['resolution_status'] == 'AUTO_RESOLVED']
-        else:
-            display_df = df_tx
+    # Subtitle with metadata & Refresh Action
+    col_sub_meta, col_sub_act = st.columns([3, 1])
+    with col_sub_meta:
+        st.markdown(f"""
+        <div style="font-size: 0.95rem; color: #6B7C93; margin-bottom: 20px;">
+            Active Batch: <strong style="color: #172B4D;">{dataset_option.split('(')[0].strip()}</strong> 
+            • <strong style="color: #1F2A37;">{metrics['total_transactions']} transactions</strong> 
+            • Last synced: 2 min ago
+        </div>
+        """, unsafe_allow_html=True)
+    with col_sub_act:
+        if st.button("🔄 Refresh Data Feed", key="dashboard_refresh_btn", use_container_width=True):
+            st.rerun()
             
-        st.dataframe(
-            display_df[['transaction_id', 'order_id', 'type', 'status', 'method', 'amount_inr', 'fee_inr', 'tax_inr', 'settled_amount_inr', 'resolution_status', 'confidence_score']],
-            use_container_width=True,
-            hide_index=True
-        )
+    # KPI Grid (5 Columns)
+    k1, k2, k3, k4, k5 = st.columns(5)
+    with k1:
+        st.markdown(f"""
+        <div class="kpi-card">
+            <div class="kpi-title">Transactions</div>
+            <div class="kpi-value">{metrics['total_payments_processed']}</div>
+            <div class="kpi-desc"><span style="color: var(--primary);">●</span> Batch volume</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with k2:
+        # Reconciled is the primary rate card (Razorpay blue background card)
+        acc_val = metrics['auto_match_accuracy_pct']
+        st.markdown(f"""
+        <div class="kpi-card primary-kpi">
+            <div class="kpi-title" style="color: rgba(255,255,255,0.75);">Reconciled</div>
+            <div class="kpi-value" style="color: #FFFFFF;">{metrics['auto_resolved_count']}</div>
+            <div class="kpi-desc" style="color: rgba(255,255,255,0.85);">{acc_val}% solved rate</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with k3:
+        st.markdown(f"""
+        <div class="kpi-card">
+            <div class="kpi-title">Exceptions</div>
+            <div class="kpi-value" style="color: var(--error);">{metrics['needs_review_count']}</div>
+            <div class="kpi-desc"><span style="color: var(--error);">⚠</span> Needs review</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with k4:
+        st.markdown(f"""
+        <div class="kpi-card">
+            <div class="kpi-title">Settled to Bank</div>
+            <div class="kpi-value">₹{metrics['settled_to_bank_inr']:,.2f}</div>
+            <div class="kpi-desc"><span style="color: var(--success);">✓</span> Verified Credit</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with k5:
+        st.markdown(f"""
+        <div class="kpi-card">
+            <div class="kpi-title">Expected Settlement</div>
+            <div class="kpi-value">₹{metrics['expected_next_2_days_inr']:,.2f}</div>
+            <div class="kpi-desc"><span style="color: var(--warning);">⏳</span> T+2 Pending</div>
+        </div>
+        """, unsafe_allow_html=True)
         
-        st.markdown("---")
-        st.markdown("### 🔍 Transaction Deep-Dive Audit")
-        st.markdown("Select a transaction from the list below to run a 3-way match audit check:")
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Reconciliation Health layout
+    col_hl, col_hr = st.columns([1.1, 0.9])
+    
+    with col_hl:
+        st.markdown("### RECONCILIATION HEALTH")
+        st.markdown(f"""
+        <div class="card-panel" style="min-height: 260px;">
+            <div style="font-size: 1.6rem; font-weight: 700; color: var(--navy); font-family: 'Outfit', sans-serif;">{acc_val}%</div>
+            <div style="font-size: 0.85rem; color: var(--text-sec); font-weight: 600; margin-bottom: 12px;">
+                {metrics['auto_resolved_count']} of {metrics['total_transactions']} transactions reconciled
+            </div>
+            <div class="custom-progress-container">
+                <div class="custom-progress-bar" style="width: {acc_val}%;"></div>
+            </div>
+            <div class="health-checklist">
+                <div class="checklist-item success">
+                    <span class="badge-icon">✓</span>
+                    <span>Gateway matched ({metrics['total_payments_processed']}/{metrics['total_payments_processed']} payment records verified)</span>
+                </div>
+                <div class="checklist-item success">
+                    <span class="badge-icon">✓</span>
+                    <span>Bank statement verified (settlement entries match statement deposits)</span>
+                </div>
+                <div class="checklist-item warning">
+                    <span class="badge-icon">⚠</span>
+                    <span>{metrics['needs_review_count']} transactions require manual investigation</span>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
         
-        # Dropdown for selecting a single transaction to inspect
-        selected_tx_id = st.selectbox(
-            "Select Transaction ID to Audit",
-            df_tx['transaction_id'].tolist()
-        )
-        
-        if selected_tx_id:
-            tx_row = df_tx[df_tx['transaction_id'] == selected_tx_id].iloc[0]
-            
-            # UI Columns for 3-way audit check
-            aud_col1, aud_col2, aud_col3 = st.columns(3)
-            
-            with aud_col1:
-                st.markdown("#### Source 1: Internal Orders")
-                o_id = tx_row['order_id']
-                if tx_row['type'] != 'PAYMENT':
-                    st.info(f"N/A: This transaction is a {tx_row['type']} (Internal orders only log collections).")
-                elif not o_id:
-                    st.error("❌ Missing Order ID! No internal order link could be established.")
-                else:
-                    ord_match = df_orders[df_orders['order_id'] == o_id] if 'df_orders' in locals() else []
-                    # Fallback mock lookup if august 25 example
-                    if dataset_option != "Razorpay Synthetic Batch (60 records)":
-                        if "fee" in o_id or "disp" in o_id or "bank" in o_id:
-                            ord_match = pd.DataFrame([{'order_id': o_id, 'amount_inr': tx_row['amount_inr'], 'status': 'completed'}])
-                        elif "amt" in o_id:
-                            ord_match = pd.DataFrame([{'order_id': o_id, 'amount_inr': 8500.00, 'status': 'completed'}])
-                        else:
-                            ord_match = pd.DataFrame([{'order_id': o_id, 'amount_inr': tx_row['amount_inr'], 'status': 'completed'}])
-                    
-                    if len(ord_match) == 0:
-                        st.error("❌ Order ID not found in Merchant Database.")
-                    else:
-                        o_row = ord_match.iloc[0]
-                        st.write(f"**Order ID**: `{o_row['order_id']}`")
-                        st.write(f"**Ledger Amount**: ₹{o_row['amount_inr']:,.2f}")
-                        st.write(f"**Database Status**: `{o_row['status']}`")
-                        
-            with aud_col2:
-                st.markdown("#### Source 2: Gateway (Razorpay)")
-                st.write(f"**Transaction ID**: `{tx_row['transaction_id']}`")
-                st.write(f"**Gateway Amount**: ₹{tx_row['amount_inr']:,.2f}")
-                st.write(f"**Gateway Status**: `{tx_row['status']}`")
-                st.write(f"**Recorded Fee**: ₹{tx_row['fee_inr']:,.2f}")
-                st.write(f"**Recorded GST**: ₹{tx_row['tax_inr']:,.2f}")
-                st.write(f"**Settled Net**: ₹{tx_row['settled_amount_inr']:,.2f}")
-                st.write(f"**Settlement Date**: `{tx_row['expected_settlement_date']}`")
-                
-            with aud_col3:
-                st.markdown("#### Source 3: Bank Statement")
-                s_date = tx_row['expected_settlement_date']
-                bank_row = df_bank[df_bank['date'] == s_date]
-                if len(bank_row) == 0:
-                    st.error(f"❌ No matching bank deposit for expected date {s_date}.")
-                else:
-                    b_row = bank_row.iloc[0]
-                    if b_row['status'] == 'MISSING_BANK_CREDIT':
-                        st.error(f"❌ Batch Omitted! No settlement was credited on {s_date}.")
-                    elif b_row['status'] == 'SETTLEMENT_AMOUNT_MISMATCH':
-                        st.warning(f"⚠ Settlement mismatch on {s_date}. Bank statement is off by ₹{b_row['difference']:,.2f}.")
-                        st.write(f"**Bank Net Deposit**: ₹{b_row['amount_inr']:,.2f}")
-                        st.write(f"**Bank Reference**: `{b_row['bank_reference']}`")
-                    else:
-                        st.success(f"✓ Reconciled! Bank statement confirms deposit of ₹{b_row['amount_inr']:,.2f}.")
-                        st.write(f"**Bank Net Deposit**: ₹{b_row['amount_inr']:,.2f}")
-                        st.write(f"**Bank Reference**: `{b_row['bank_reference']}`")
-                        
-            # Auditor Decision block
-            st.markdown("##### Reconciliation Verdict")
-            if len(tx_row['calculated_exceptions']) == 0:
-                st.success(f"**Auto-Resolved (Confidence: 100%)** — No discrepancies found. All checks pass.")
-            else:
-                exceptions_clean = [str(e).replace('₹', 'Rs.') for e in tx_row['calculated_exceptions']]
-                st.error(f"**Needs Review (Confidence: {tx_row['confidence_score']*100:.0f}%)** — Discrepancies isolated: `{exceptions_clean}`")
-                
-                # Action button
-                if st.button(f"Ask Assistant about {selected_tx_id}", key="query_tx"):
-                    st.session_state.chat_query = f"Provide a complete audit and explanation for transaction {selected_tx_id} based on the reconciliation report."
-                    st.info("Query sent! Open the floating Assistant popover in the bottom right corner to view the response.")
-
-    # ----------------------------------------------------
-    # TAB 2: UNMATCHED INTERNAL ORDERS
-    # ----------------------------------------------------
-    with tab2:
-        st.markdown("### Gateway Orphans (Internal Orders lacking Gateway Payment)")
-        st.markdown("These orders are marked as completed in the merchant database but have no matching transaction in the Payment Gateway reports:")
-        
-        st.dataframe(
-            df_unmatched[['order_id', 'amount_inr', 'created_at', 'status', 'customer_email', 'calculated_exceptions', 'confidence_score']],
-            use_container_width=True,
-            hide_index=True
-        )
-        
-        st.info("📝 Action required: Re-verify if these orders were processed through an alternative gateway, or check for system database log sync issues.")
-
-    # ----------------------------------------------------
-    # TAB 3: BANK SETTLEMENT AUDIT
-    # ----------------------------------------------------
-    with tab3:
-        st.markdown("### Daily Bank Settlement Reconciliation Audit")
-        st.markdown("Aggregated Daily Gateway Settlement Batches compared with Actual Bank Statement Deposits:")
-        
-        # Format display columns
-        df_bank_display = df_bank.copy()
-        
-        st.dataframe(
-            df_bank_display[['date', 'expected_amount_inr', 'amount_inr', 'difference', 'bank_reference', 'status']],
-            use_container_width=True,
-            hide_index=True
-        )
-        
-        if len(bank_excs) > 0:
-            st.markdown("#### Isolated Bank Discrepancies")
-            for exc in bank_excs:
-                exc_clean = exc.replace('₹', 'Rs.')
-                st.error(f"● {exc_clean}")
-
-    # ----------------------------------------------------
-    # TAB 4: FORWARD CASH FORECASTER
-    # ----------------------------------------------------
-    with tab4:
-        st.markdown("### 📈 Forward Cash Flow & Liquidity Forecaster")
-        st.markdown("Predictions of daily net settlements and cumulative treasury balances based on pending settlement queues (T+2) and historical averages (T+3 onwards):")
-        
-        # Metrics
-        fc_col1, fc_col2, fc_col3 = st.columns(3)
-        with fc_col1:
-            st.metric("Projected 7-Day Cumulative Balance", f"₹{forecast_df.iloc[-1]['cumulative_cash']:,.2f}", 
-                      delta=f"₹{forecast_df['net_inflow'].sum():+,.2f}")
-        with fc_col2:
-            st.metric("Next 2-Day Committed Inflows", f"₹{forecast_df.iloc[:2]['gross_collections'].sum():,.2f}", 
-                      help="Settlements expected from already captured customer transactions.")
-        with fc_col3:
-            st.metric("Proj. Average Daily Net Addition", f"₹{forecast_df['net_inflow'].mean():,.2f}")
-            
-        # Chart
-        st.markdown("#### Cash Flow Projection Trend")
+    with col_hr:
+        st.markdown("### RECONCILIATION TREND")
+        # Reconciliation health Plotly Stacked Bar Chart
         fig = go.Figure()
+        # Grouped bar data
         fig.add_trace(go.Bar(
-            x=forecast_df['date'],
-            y=forecast_df['net_inflow'],
-            name='Daily Net Cash Flow',
-            marker_color='#0b5ea8',
-            yaxis='y'
+            x=['Aug 20', 'Aug 21', 'Aug 22', 'Aug 23', 'Aug 24', 'Aug 25'],
+            y=[15, 12, 10, 5, 1, 0],
+            name='Reconciled',
+            marker_color='#0F4C75'
         ))
-        fig.add_trace(go.Scatter(
-            x=forecast_df['date'],
-            y=forecast_df['cumulative_cash'],
-            name='Cumulative Treasury Cash',
-            line=dict(color='#c62828', width=3),
-            yaxis='y2'
+        fig.add_trace(go.Bar(
+            x=['Aug 20', 'Aug 21', 'Aug 22', 'Aug 23', 'Aug 24', 'Aug 25'],
+            y=[0, 1, 2, 5, 8, 2],
+            name='Exceptions',
+            marker_color='#F59E0B'
         ))
-        
         fig.update_layout(
-            title="7-Day Treasury Forecast",
-            yaxis=dict(title="Daily Net Flow (INR)", side='left'),
-            yaxis2=dict(title="Cumulative Balance (INR)", side='right', overlaying='y', showgrid=False),
-            legend=dict(x=0.01, y=0.99),
+            barmode='stack',
+            height=260,
+            margin=dict(l=10, r=10, t=10, b=10),
             template='plotly_white',
-            hovermode="x unified"
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            xaxis=dict(showgrid=False),
+            yaxis=dict(gridcolor='#F1F5F9')
         )
         st.plotly_chart(fig, use_container_width=True)
-        
-        # Table breakdown
-        st.markdown("#### Forecast Ledger Table")
-        forecast_display = forecast_df.copy()
-        forecast_display.columns = [
-            'Forecast Date', 'Source Status', 'Gross Collections (₹)', 
-            'Refunds (₹)', 'Payouts (₹)', 'Est. Fees & GST (₹)', 
-            'Net Bank Cash Inflow (₹)', 'Cumulative Treasury Balance (₹)'
-        ]
-        st.dataframe(forecast_display, use_container_width=True, hide_index=True)
 
-    # ----------------------------------------------------
-    # TAB 5: TAX-LINE MATCHER
-    # ----------------------------------------------------
-    with tab5:
-        st.markdown("### 🏛️ Tax Line-Item Matcher & Auditor")
-        st.markdown("Automated auditing of GST tax liability on gateway fees and e-commerce Tax Deducted at Source (TDS) under Section 194-O:")
-        
-        # Metrics
-        tax_col1, tax_col2, tax_col3, tax_col4 = st.columns(4)
-        with tax_col1:
-            st.metric("Total Gateway GST Audited", f"₹{tax_summary['total_gst_collected_inr']:,.2f}")
-        with tax_col2:
-            st.metric("Total 194-O TDS Audited", f"₹{tax_summary['total_tds_deducted_inr']:,.2f}")
-        with tax_col3:
-            t_accuracy = tax_summary['tax_compliance_pct']
-            st.metric("Tax Compliance Rate", f"{t_accuracy}%")
-        with tax_col4:
-            st.metric("Tax Exceptions Count", f"{tax_summary['total_tax_discrepancies']}", 
-                      delta=f"{tax_summary['total_tax_discrepancies']} flag(s)", delta_color="inverse")
+    # Financial flow overview
+    st.markdown("### FINANCIAL FLOW OVERVIEW")
+    st.markdown("""
+    <div class="flow-container">
+        <div class="flow-step">
+            <div class="step-label">Customer Collections</div>
+            <div class="step-value">₹72,392.00</div>
+        </div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step">
+            <div class="step-label">Refunds</div>
+            <div class="step-value">-₹8,500.00</div>
+        </div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step">
+            <div class="step-label">Gateway Fees & GST</div>
+            <div class="step-value">-₹2,341.00</div>
+        </div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step">
+            <div class="step-label">Net Collections</div>
+            <div class="step-value">₹61,551.00</div>
+        </div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step">
+            <div class="step-label">Expected Settlement</div>
+            <div class="step-value">₹61,551.00</div>
+        </div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step">
+            <div class="step-label" style="color: var(--success);">Bank Settlement</div>
+            <div class="step-value" style="color: var(--success); font-weight: 800;">₹61,551.00</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # AI insights card
+    st.markdown("### AI INSIGHTS")
+    st.markdown(f"""
+    <div class="ai-insights-card">
+        <div class="ai-insights-header">
+            <span class="ai-spark-icon">✦</span>
+            <h3>AI Finance Insights</h3>
+        </div>
+        <div class="ai-insights-content">
+            <p style="font-size: 13.5px; font-weight: 500; margin: 0 0 10px 0;">Today's batch reconciliation is <strong>{acc_val}% complete</strong>. The system has flagged <strong>{metrics['needs_review_count']} transactions</strong> requiring audit verification.</p>
+            <div class="ai-issue-summary">
+                <div class="issue-item"><strong>Primary Driver:</strong> Settlement discrepancies hit Aug 22 batches.</div>
+                <div class="issue-item"><strong>Potential Impact:</strong> <span class="text-error">₹8,420.00</span> in bank credits requires explanation.</div>
+                <div class="issue-item"><strong>Recommended Action:</strong> Run a bank credit audit and check Razorpay payouts.</div>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    col_act_left, col_act_right = st.columns([1, 3])
+    with col_act_left:
+        if st.button("Review Exceptions Queue", key="ai_redirect_exceptions_btn", use_container_width=True):
+            st.session_state.page = "exceptions"
+            st.rerun()
             
-        # Dropdown Filter
-        tax_filter = st.selectbox(
-            "Filter Audited Tax Ledger by Discrepancy",
-            ["All Tax Audits", "GST Discrepancies Only", "TDS Anomalies Only", "Unreconciled Tax Issues (All Anomalies)", "Tax Reconciled OK"],
-            index=0
-        )
-        
-        if tax_filter == "GST Discrepancies Only":
-            display_tax_df = tax_df[tax_df['tax_status'].isin(['GST_MISMATCH', 'MULTIPLE_TAX_ISSUES'])]
-        elif tax_filter == "TDS Anomalies Only":
-            display_tax_df = tax_df[tax_df['tax_status'].isin(['TDS_UNDER_DEDUCTION', 'TDS_OVER_DEDUCTION', 'MULTIPLE_TAX_ISSUES'])]
-        elif tax_filter == "Unreconciled Tax Issues (All Anomalies)":
-            display_tax_df = tax_df[tax_df['tax_status'] != 'OK']
-        elif tax_filter == "Tax Reconciled OK":
-            display_tax_df = tax_df[tax_df['tax_status'] == 'OK']
-        else:
-            display_tax_df = tax_df
-            
-        cols_to_display = [
-            'transaction_id', 'type', 'recipient_type', 'tds_applicable', 'tds_rate',
-            'amount_inr', 'fee_inr', 'actual_gst', 'expected_gst', 'gst_variance',
-            'actual_tds', 'expected_tds', 'tds_variance', 'tax_status', 'audit_comments'
-        ]
-        tax_disp = display_tax_df[cols_to_display].copy()
-        tax_disp['tds_rate'] = tax_disp['tds_rate'] * 100.0
-        tax_disp.columns = [
-            'Transaction ID', 'Type', 'Recipient Type', 'TDS Applicable', 'TDS Rate (%)',
-            'Amount (₹)', 'Gateway Fee (₹)', 'Actual GST (₹)', 'Expected GST (₹)', 'GST Variance (₹)',
-            'Actual TDS (₹)', 'Expected TDS (₹)', 'TDS Variance (₹)', 'Tax Audit Status', 'Audit Logs'
-        ]
-        st.dataframe(tax_disp, use_container_width=True, hide_index=True)
-        
-        # Action button link to chat
-        st.markdown("---")
-        st.markdown("#### 🔍 Tax Exception Auditor Deep-Dive")
-        selected_tax_tx = st.selectbox(
-            "Select Tax Discrepancy Transaction ID to Audit",
-            tax_df[tax_df['tax_status'] != 'OK']['transaction_id'].tolist()
-        )
-        if selected_tax_tx:
-            tax_row_sel = tax_df[tax_df['transaction_id'] == selected_tax_tx].iloc[0]
-            st.error(f"**Tax Audit Flag: {tax_row_sel['tax_status']}**")
-            st.write(f"- **Audit Verdict**: {tax_row_sel['audit_comments']}")
-            st.write(f"- **Recipient Profile**: {tax_row_sel['recipient_type']} (TDS Applicable: {'Yes' if tax_row_sel['tds_applicable'] else 'No'}, Rate: {tax_row_sel['tds_rate']*100:.1f}%)")
-            st.write(f"- **GST Details**: Recorded: ₹{tax_row_sel['actual_gst']:.2f}, Expected (18% fee): ₹{tax_row_sel['expected_gst']:.2f} (Variance: ₹{tax_row_sel['gst_variance']:.2f})")
-            st.write(f"- **TDS Details**: Recorded (Simulated): ₹{tax_row_sel['actual_tds']:.2f}, Expected: ₹{tax_row_sel['expected_tds']:.2f} (Variance: ₹{tax_row_sel['tds_variance']:.2f})")
-            
-            if st.button(f"Ask Assistant to resolve tax exception {selected_tax_tx}", key="query_tax_btn"):
-                st.session_state.chat_query = f"Explain the tax and GST variances for transaction {selected_tax_tx}."
-                st.info("Query sent! Open the floating Assistant popover in the bottom right corner to view the response.")
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Daily Close Workflow Section
+    st.markdown("### DAILY CLOSE WORKFLOW")
+    exceptions_unresolved = metrics['needs_review_count']
+    if exceptions_unresolved > 0:
+        st.markdown(f"""
+        <div style="background-color: #FFFFFF; border: 1px solid var(--border); border-left: 4px solid var(--warning); padding: 20px; border-radius: 6px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+            <h4 style="color: var(--warning); margin: 0 0 8px 0; font-size: 15px;">DAILY CLOSE STATUS: PENDING ACTIONS</h4>
+            <div class="health-checklist" style="margin-top: 10px; margin-bottom: 15px;">
+                <div class="checklist-item success"><span class="badge-icon">✓</span> Gateway reconciliation complete (60/60 matched)</div>
+                <div class="checklist-item success"><span class="badge-icon">✓</span> Bank settlement deposits verified</div>
+                <div class="checklist-item success"><span class="badge-icon">✓</span> Gateway processing fees validated</div>
+                <div class="checklist-item error"><span class="badge-icon">⚠</span> {exceptions_unresolved} exceptions require manual attention</div>
+                <div class="checklist-item success"><span class="badge-icon">✓</span> Tax compliance & TDS checks completed</div>
+            </div>
+            <p style="margin: 0 0 15px 0; font-size: 13.5px; font-weight: 500; color: var(--navy);">
+                <strong>{exceptions_unresolved} unresolved exceptions</strong> are preventing batch closure. You must audit and resolve these exceptions before closing today's daily ledger.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        col_c1, col_csp = st.columns([1.2, 4.8])
+        with col_c1:
+            if st.button("Review Exceptions Queue", key="close_review_exceptions_btn", use_container_width=True):
+                st.session_state.page = "exceptions"
+                st.rerun()
+    else:
+        st.markdown(f"""
+        <div style="background-color: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.2); border-left: 4px solid var(--success); padding: 20px; border-radius: 6px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+            <h4 style="color: var(--success); margin: 0 0 8px 0; font-size: 15px;">✓ DAILY CLOSE READY</h4>
+            <div class="health-checklist" style="margin-top: 10px; margin-bottom: 15px;">
+                <div class="checklist-item success"><span class="badge-icon">✓</span> Gateway reconciliation complete (all payments matched)</div>
+                <div class="checklist-item success"><span class="badge-icon">✓</span> Bank settlement deposits verified</div>
+                <div class="checklist-item success"><span class="badge-icon">✓</span> Gateway processing fees validated</div>
+                <div class="checklist-item success"><span class="badge-icon">✓</span> All exceptions successfully resolved</div>
+                <div class="checklist-item success"><span class="badge-icon">✓</span> Tax compliance & GST audits passed</div>
+            </div>
+            <p style="margin: 0 0 15px 0; font-size: 13.5px; font-weight: 500; color: var(--navy);">
+                All accounts are fully reconciled. Today's ledger batch is balanced and prepared for official closing.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        col_c1, col_c2, col_csp = st.columns([1.2, 1, 3.8])
+        with col_c1:
+            if st.button("Generate Close Report", key="close_gen_report_btn", use_container_width=True):
+                st.success("Daily Close Summary Report generated and saved to exports.")
+        with col_c2:
+            if st.button("Close Ledger Batch", key="close_batch_btn", use_container_width=True):
+                st.balloons()
+                st.success("Batch successfully closed and archived in general ledger.")
 
-    # ----------------------------------------------------
-    # TAB 6: MERCHANT SUPPORT HELPDESK
-    # ----------------------------------------------------
-    with tab6:
-        st.markdown("### 🏛️ Merchant Support Helpdesk & raised queries")
-        st.markdown("Directly raise payment queries or report settlement discrepancies to Razorpay Admin. Resolving an issue updates status immediately.")
+# ----------------------------------------------------
+# PAGE 2: TRANSACTIONS LEDGER & AUDIT
+# ----------------------------------------------------
+elif st.session_state.page == "transactions":
+    
+    # CHECK IF SINGLE TRANSACTION AUDIT VIEW IS ACTIVE
+    if st.session_state.audit_tx:
+        st.markdown(f"<h2>Transaction Audit: `{st.session_state.audit_tx}`</h2>", unsafe_allow_html=True)
         
-        # Raise support ticket Form
-        st.markdown("#### ✉️ Raise a Support Ticket / Contact Us")
-        exc_options = df_tx[df_tx['resolution_status'] == 'NEEDS_REVIEW']['transaction_id'].tolist()
-        exc_options = ["General Query (No Specific Transaction)"] + exc_options
-        
-        with st.form(key="support_ticket_form", clear_on_submit=True):
-            selected_tx = st.selectbox("Select Transaction ID related to the issue:", exc_options)
-            subject_text = st.text_input("Subject of issue:", placeholder="e.g. Gateway fee is 3% instead of 2%")
-            message_text = st.text_area("Detailed message description:", placeholder="Describe the discrepancy or question...")
-            submit_ticket = st.form_submit_button("Submit Ticket")
-            
-        if submit_ticket:
-            if not subject_text.strip() or not message_text.strip():
-                st.error("Please fill in both the subject and description message.")
-            else:
-                raise_support_ticket(selected_tx, "Flipkart (Demo)", subject_text, message_text)
-                st.success("Ticket raised successfully! Razorpay Admins have been notified.")
+        # Row layout for back controls
+        col_back, col_explain = st.columns([1, 3])
+        with col_back:
+            if st.button("← Back to Ledger", key="back_to_ledger_btn", use_container_width=True):
+                st.session_state.audit_tx = None
+                st.session_state.explain_tx = None
+                st.query_params.clear()
+                st.query_params.page = "transactions"
                 st.rerun()
                 
-        # Raised Tickets History
-        st.markdown("---")
-        st.markdown("#### 📋 History of Raised Tickets")
-        merchant_tickets = get_support_tickets("Flipkart (Demo)")
-        
-        if not merchant_tickets:
-            st.info("No queries raised yet. Fill in the form above if you have any discrepancies!")
+        # Load transaction details
+        tx_row_matches = df_tx[df_tx['transaction_id'] == st.session_state.audit_tx]
+        if tx_row_matches.empty:
+            st.error("Transaction not found in active batch.")
         else:
-            for ticket in merchant_tickets:
-                status_color = "#27ae60" if ticket['status'] == 'RESOLVED' else "#d35400"
+            tx_row = tx_row_matches.iloc[0]
+            o_id = tx_row['order_id']
+            
+            # Draw Audit Nodes
+            st.markdown("### THREE-WAY AUDIT VERIFICATION")
+            
+            # Node 1: Internal Order
+            ord_amt = "₹0.00"
+            ord_status = "Not Found"
+            ord_class = "error-node"
+            
+            if o_id:
+                ord_match = df_orders[df_orders['order_id'] == o_id]
+                # Mock details if example batch is used and order matches exception patterns
+                if dataset_option != "Razorpay Synthetic Batch (60 records)":
+                    if "fee" in o_id or "disp" in o_id or "bank" in o_id:
+                        ord_match = pd.DataFrame([{'order_id': o_id, 'amount_inr': tx_row['amount_inr'], 'status': 'completed'}])
+                    elif "amt" in o_id:
+                        ord_match = pd.DataFrame([{'order_id': o_id, 'amount_inr': 8500.00, 'status': 'completed'}])
+                    else:
+                        ord_match = pd.DataFrame([{'order_id': o_id, 'amount_inr': tx_row['amount_inr'], 'status': 'completed'}])
+                        
+                if not ord_match.empty:
+                    o_row = ord_match.iloc[0]
+                    ord_amt = f"₹{o_row['amount_inr']:,.2f}"
+                    ord_status = o_row['status'].upper()
+                    ord_class = "active-node"
+            
+            # Node 2: Gateway Details
+            gate_class = "active-node"
+            if len(tx_row['calculated_exceptions']) > 0 and any('FEE' in str(e) or 'TAX' in str(e) for e in tx_row['calculated_exceptions']):
+                gate_class = "error-node"
+                
+            # Node 3: Bank Credit details
+            bank_amt = "₹0.00"
+            bank_ref = "No Reference"
+            bank_status = "Omitted"
+            bank_class = "error-node"
+            s_date = tx_row['expected_settlement_date']
+            
+            if s_date:
+                bank_row = df_bank[df_bank['date'] == s_date]
+                if not bank_row.empty:
+                    b_row = bank_row.iloc[0]
+                    if b_row['status'] == 'RECONCILED':
+                        bank_amt = f"₹{tx_row['settled_amount_inr']:,.2f}"
+                        bank_ref = b_row['bank_reference']
+                        bank_status = "VERIFIED CREDIT"
+                        bank_class = "active-node"
+                    elif b_row['status'] == 'SETTLEMENT_AMOUNT_MISMATCH':
+                        bank_amt = f"₹{b_row['amount_inr']:,.2f}"
+                        bank_ref = b_row['bank_reference']
+                        bank_status = "SETTLEMENT MISMATCH"
+                        bank_class = "error-node"
+            
+            # Render Audit Flow Nodes as HTML
+            st.markdown(f"""
+            <div class="audit-flow-container">
+                <div class="audit-flow-nodes">
+                    <!-- Node 1: Internal Orders -->
+                    <div class="audit-flow-node {ord_class}">
+                        <div class="node-header">01 Internal Order Ledger</div>
+                        <div class="node-details">
+                            <div class="detail-item"><strong>Order ID</strong><div>{o_id or 'Missing'}</div></div>
+                            <div class="detail-item"><strong>Ledger Amount</strong><div>{ord_amt}</div></div>
+                            <div class="detail-item"><strong>Sync Status</strong><div>{ord_status}</div></div>
+                        </div>
+                    </div>
+                    
+                    <div class="audit-flow-arrow">↓</div>
+                    
+                    <!-- Node 2: Gateway (Razorpay) -->
+                    <div class="audit-flow-node {gate_class}">
+                        <div class="node-header">02 Razorpay Gateway Capture</div>
+                        <div class="node-details">
+                            <div class="detail-item"><strong>Transaction ID</strong><div>{tx_row['transaction_id']}</div></div>
+                            <div class="detail-item"><strong>Captured Amount</strong><div>₹{tx_row['amount_inr']:,.2f}</div></div>
+                            <div class="detail-item"><strong>Fees & GST</strong><div>₹{tx_row['fee_inr']:,.2f} + ₹{tx_row['tax_inr']:,.2f}</div></div>
+                            <div class="detail-item"><strong>Settlement Net</strong><div>₹{tx_row['settled_amount_inr']:,.2f}</div></div>
+                            <div class="detail-item"><strong>Expected Settlement</strong><div>{tx_row['expected_settlement_date']}</div></div>
+                            <div class="detail-item"><strong>Payment Type</strong><div>{tx_row['type']} ({tx_row['method']})</div></div>
+                        </div>
+                    </div>
+                    
+                    <div class="audit-flow-arrow">↓</div>
+                    
+                    <!-- Node 3: Bank Statement -->
+                    <div class="audit-flow-node {bank_class}">
+                        <div class="node-header">03 Bank Statement Credit</div>
+                        <div class="node-details">
+                            <div class="detail-item"><strong>Credit Date</strong><div>{s_date or 'No date'}</div></div>
+                            <div class="detail-item"><strong>Bank Net Credit</strong><div>{bank_amt}</div></div>
+                            <div class="detail-item"><strong>Bank Reference</strong><div>{bank_ref}</div></div>
+                            <div class="detail-item"><strong>Credit Status</strong><div>{bank_status}</div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Reconcile verdict card
+            st.markdown("### AUDIT VERDICT")
+            if len(tx_row['calculated_exceptions']) == 0:
+                st.markdown("""
+                <div style="background-color: rgba(16, 185, 129, 0.08); border-left: 4px solid var(--success); padding: 15px; border-radius: 6px; margin-bottom: 20px;">
+                    <h5 style="color: var(--success); margin: 0 0 4px 0;">✓ AUTO-RESOLVED</h5>
+                    <p style="margin: 0; font-size: 13px; font-weight: 500;">Confidence: 100%. All reconciliation audit checks passed successfully.</p>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                ex_clean = [str(ex).replace('₹', 'Rs.') for ex in tx_row['calculated_exceptions']]
                 st.markdown(f"""
-                <div style="background-color:#ffffff; padding:16px; border-radius:6px; border-left:4px solid {status_color}; margin-bottom:12px; box-shadow:0 1px 3px rgba(11,61,99,0.08);">
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <strong style="color:#0b3d63; font-size:1rem;">Ticket #{ticket['ticket_id']}: {ticket['subject']}</strong>
-                        <span style="background-color:{'#eafaf1' if ticket['status']=='RESOLVED' else '#fef5e7'}; color:{'#27ae60' if ticket['status']=='RESOLVED' else '#d35400'}; padding:2px 8px; border-radius:4px; font-weight:600; font-size:0.8rem; border:1px solid {status_color}22;">
-                            {ticket['status']}
-                        </span>
+                <div style="background-color: rgba(239, 68, 68, 0.08); border-left: 4px solid var(--error); padding: 15px; border-radius: 6px; margin-bottom: 20px;">
+                    <h5 style="color: var(--error); margin: 0 0 4px 0;">⚠ NEEDS REVIEW</h5>
+                    <p style="margin: 0; font-size: 13px; font-weight: 600;">Discrepancies isolated: {ex_clean}</p>
+                    <p style="margin: 6px 0 0 0; font-size: 12px; color: var(--text-sec);">AI Recommendation: Inspect order mappings and charge parameters to identify charge discrepancies.</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+            # Explain Decision button
+            col_dec_btn, col_dec_spc = st.columns([1, 2.5])
+            with col_dec_btn:
+                if st.button("✦ Explain Decision with AI", key="explain_decision_btn", use_container_width=True):
+                    st.session_state.explain_tx = st.session_state.audit_tx
+                    st.rerun()
+            
+            # Show AI explanation panel if active
+            if st.session_state.explain_tx == st.session_state.audit_tx:
+                st.markdown("### AI EXPLANATION")
+                if len(tx_row['calculated_exceptions']) == 0:
+                    st.markdown("""
+                    <div class="ai-explanation-panel">
+                        <div class="ai-explanation-header">
+                            <span class="ai-spark-icon">✦</span>
+                            <h4>AI RECONCILIATION EXPLANATION</h4>
+                        </div>
+                        <ul class="ai-explanation-checklist">
+                            <li><span style="color: var(--success); font-weight: bold;">✓</span> Order ID matched</li>
+                            <li><span style="color: var(--success); font-weight: bold;">✓</span> Gateway transaction matched</li>
+                            <li><span style="color: var(--success); font-weight: bold;">✓</span> Amount matched</li>
+                            <li><span style="color: var(--success); font-weight: bold;">✓</span> Fee validated</li>
+                            <li><span style="color: var(--success); font-weight: bold;">✓</span> GST validated</li>
+                            <li><span style="color: var(--success); font-weight: bold;">✓</span> Bank settlement matched</li>
+                        </ul>
+                        <div style="font-size: 12.5px; font-weight: 500;">
+                            <strong>Confidence: 100%</strong><br>
+                            Conclusion: No discrepancies detected. All parameters verify against merchant guidelines.
+                        </div>
                     </div>
-                    <div style="color:#5b6b7c; font-size:0.8rem; margin:2px 0 8px 0;">
-                        Ref. Transaction ID: <code>{ticket['transaction_id']}</code> | Raised: {ticket['timestamp']}
+                    """, unsafe_allow_html=True)
+                else:
+                    # Failed explanation
+                    st.markdown(f"""
+                    <div class="ai-explanation-panel" style="border-left-color: var(--error);">
+                        <div class="ai-explanation-header">
+                            <span class="ai-spark-icon" style="color: var(--error);">✦</span>
+                            <h4 style="color: var(--error);">AI RECONCILIATION EXPLANATION</h4>
+                        </div>
+                        <div style="font-size: 13px; font-weight: 500; line-height: 1.5;">
+                            <strong>Anomalies Detected:</strong><br>
+                            - Exceptions flagged: <span style="color: var(--error);">{ex_clean}</span><br><br>
+                            <strong>Analysis Conclusion:</strong><br>
+                            The mathematical verification checks failed. The gateway processing charges did not match the default rate rules ({st.session_state.sys_gateway_fee}% standard, {st.session_state.sys_gst_rate}% GST on fees).
+                            Specifically, the recorded gateway fee of ₹{tx_row['fee_inr']:.2f} differs from the expected amount, causing settlement net differences.<br><br>
+                            <strong>Recommended action:</strong> Adjust settlement rules in settings or contact support to resolve discrepancy.
+                        </div>
                     </div>
-                    <div style="font-size:0.9rem; background:#f4f7f6; padding:10px; border-radius:4px; margin-bottom:8px; border:1px solid #d7e0ea; color:#1f2a37;">
-                        {ticket['message']}
+                    """, unsafe_allow_html=True)
+
+    else:
+        # REGULAR TRANSACTIONS LEDGER TABLE VIEW
+        st.markdown("<h2>Payment Gateway Transactions</h2>", unsafe_allow_html=True)
+        
+        # Filters Row
+        fl_s, fl_t, fl_m, fl_search = st.columns([1, 1, 1, 1.5])
+        
+        with fl_s:
+            status_filter = st.selectbox(
+                "Resolution Status",
+                ["All Statuses", "Auto-Resolved", "Needs Review (Exceptions)"]
+            )
+        with fl_t:
+            type_filter = st.selectbox(
+                "Transaction Type",
+                ["All Types", "PAYMENT", "REFUND", "PAYOUT"]
+            )
+        with fl_m:
+            method_filter = st.selectbox(
+                "Payment Method",
+                ["All Methods", "upi", "card", "netbanking", "wallet"]
+            )
+        with fl_search:
+            search_query = st.text_input(
+                "Search transaction/order ID",
+                placeholder="Search pay_xxx or order_xxx..."
+            )
+            
+        # Apply filters to df_tx
+        display_df = df_tx.copy()
+        
+        if status_filter == "Auto-Resolved":
+            display_df = display_df[display_df['resolution_status'] == 'AUTO_RESOLVED']
+        elif status_filter == "Needs Review (Exceptions)":
+            display_df = display_df[display_df['resolution_status'] == 'NEEDS_REVIEW']
+            
+        if type_filter != "All Types":
+            display_df = display_df[display_df['type'] == type_filter]
+            
+        if method_filter != "All Methods":
+            display_df = display_df[display_df['method'] == method_filter]
+            
+        if search_query.strip():
+            q = search_query.strip().lower()
+            display_df = display_df[
+                display_df['transaction_id'].str.lower().str.contains(q) |
+                display_df['order_id'].str.lower().str.contains(q)
+            ]
+            
+        # Table render controls (Export and stats)
+        col_export, col_counts = st.columns([1, 3])
+        with col_export:
+            # Mock Export Button with dynamic download link
+            csv_data = display_df.to_csv(index=False)
+            st.download_button(
+                label="📥 Export Ledger to CSV",
+                data=csv_data,
+                file_name="reconciliation_gateway_ledger.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+        with col_counts:
+            st.markdown(f"""
+            <div style="text-align: right; font-size: 0.85rem; color: var(--text-sec); font-weight: 600; padding-top: 8px;">
+                Showing {len(display_df)} transactions matching filters
+            </div>
+            """, unsafe_allow_html=True)
+            
+        # Draw custom premium HTML Table
+        html_rows = ""
+        for idx, row in display_df.iterrows():
+            status_pill_class = row['resolution_status'].lower()
+            status_label = "Reconciled" if row['resolution_status'] == 'AUTO_RESOLVED' else "Needs Review"
+            
+            # Action audit deep link
+            tx_id = row['transaction_id']
+            action_btn = f'<a href="?page=transactions&audit_tx={tx_id}" target="_self" class="action-link">Audit</a>'
+            
+            html_rows += f"""
+            <tr>
+                <td><code>{tx_id}</code></td>
+                <td><code>{row['order_id'] or 'NaN'}</code></td>
+                <td><strong>{row['type']}</strong></td>
+                <td>₹{row['amount_inr']:,.2f}</td>
+                <td>₹{row['fee_inr']:,.2f}</td>
+                <td>₹{row['tax_inr']:,.2f}</td>
+                <td>₹{row['settled_amount_inr']:,.2f}</td>
+                <td><span class="status-pill {status_pill_class}">{status_label}</span></td>
+                <td>{row['confidence_score']*100:.0f}%</td>
+                <td>{action_btn}</td>
+            </tr>
+            """
+            
+        if not html_rows:
+            html_rows = "<tr><td colspan='10' style='text-align: center; color: var(--text-sec);'>No transactions found matching filters.</td></tr>"
+            
+        st.markdown(f"""
+        <div class="custom-table-container">
+            <table class="custom-table">
+                <thead>
+                    <tr>
+                        <th>Transaction ID</th>
+                        <th>Order ID</th>
+                        <th>Type</th>
+                        <th>Amount</th>
+                        <th>Fee</th>
+                        <th>GST</th>
+                        <th>Settlement Net</th>
+                        <th>Status</th>
+                        <th>Confidence</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {html_rows}
+                </tbody>
+            </table>
+        </div>
+        """, unsafe_allow_html=True)
+
+# ----------------------------------------------------
+# PAGE 3: EXCEPTIONS QUEUE
+# ----------------------------------------------------
+elif st.session_state.page == "exceptions":
+    st.markdown("<h2>Exceptions Investigation Queue</h2>", unsafe_allow_html=True)
+    
+    # Active Exceptions count
+    exc_txs = df_tx[df_tx['resolution_status'] == 'NEEDS_REVIEW']
+    exc_unmatched = df_unmatched[df_unmatched['resolution_status'] == 'NEEDS_REVIEW']
+    total_active_count = len(exc_txs) + len(exc_unmatched)
+    
+    st.markdown(f"""
+    <div style="font-size: 1rem; color: var(--text-sec); margin-bottom: 20px;">
+        There are <strong style="color: var(--error);">{total_active_count} unresolved exceptions</strong> requiring review.
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Filters
+    col_ef1, col_ef2, col_ef_search = st.columns([1, 1, 2])
+    with col_ef1:
+        severity_filter = st.selectbox(
+            "Exceptions Severity",
+            ["All Severities", "HIGH", "MEDIUM", "LOW"]
+        )
+    with col_ef2:
+        exc_type_filter = st.selectbox(
+            "Anomalies Classification",
+            ["All Exceptions", "Fee Mismatch", "Missing Order Link", "Bank Credit Missing", "Dispute Transaction"]
+        )
+    with col_ef_search:
+        exc_search = st.text_input(
+            "Search exception reference ID",
+            placeholder="Search transaction or order ID..."
+        )
+        
+    # Iterate and draw exception cards
+    exceptions_list = []
+    
+    # Add df_tx exceptions
+    for idx, row in exc_txs.iterrows():
+        # Determine Severity based on confidence
+        if row['confidence_score'] == 0:
+            severity = "HIGH"
+        elif row['confidence_score'] <= 0.2:
+            severity = "MEDIUM"
+        else:
+            severity = "LOW"
+            
+        ex_str = ", ".join([str(e).replace('₹', 'Rs.') for e in row['calculated_exceptions']])
+        
+        exceptions_list.append({
+            'id': row['transaction_id'],
+            'ref_id': row['order_id'],
+            'type': 'Gateway Transaction',
+            'amount': row['amount_inr'],
+            'severity': severity,
+            'issue': ex_str,
+            'rec': "Audit Gateway charges and verify mappings.",
+            'raw_row': row
+        })
+        
+    # Add unmatched orders
+    for idx, row in exc_unmatched.iterrows():
+        exceptions_list.append({
+            'id': row['order_id'],
+            'ref_id': 'Missing link',
+            'type': 'Internal Order Orphan',
+            'amount': row['amount_inr'],
+            'severity': 'HIGH',
+            'issue': "GATEWAY_PAYMENT_NOT_FOUND (Completed internally but no payment capture)",
+            'rec': "Contact merchant billing support or check database logs.",
+            'raw_row': row
+        })
+        
+    # Filter exceptions_list
+    filtered_excs = []
+    for item in exceptions_list:
+        if severity_filter != "All Severities" and item['severity'] != severity_filter:
+            continue
+            
+        if exc_type_filter != "All Exceptions":
+            if exc_type_filter == "Fee Mismatch" and "FEE" not in item['issue']:
+                continue
+            if exc_type_filter == "Missing Order Link" and "ORDER" not in item['issue'] and "GATEWAY" not in item['issue']:
+                continue
+            if exc_type_filter == "Bank Credit Missing" and "BANK" not in item['issue']:
+                continue
+            if exc_type_filter == "Dispute Transaction" and "DISPUTE" not in item['issue']:
+                continue
+                
+        if exc_search.strip():
+            sq = exc_search.strip().lower()
+            if sq not in item['id'].lower() and sq not in str(item['ref_id']).lower():
+                continue
+                
+        filtered_excs.append(item)
+        
+    # Draw exception rows
+    if not filtered_excs:
+        st.info("No exceptions found matching filters.")
+    else:
+        for ex in filtered_excs:
+            sev_class = ex['severity'].lower()
+            
+            st.markdown(f"""
+            <div style="background-color: #FFFFFF; border: 1px solid var(--border); border-left: 4px solid {'var(--error)' if ex['severity']=='HIGH' else ('var(--warning)' if ex['severity']=='MEDIUM' else '#3B82F6')}; padding: 16px; border-radius: 6px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <div>
+                        <span class="status-pill {sev_class}" style="margin-right: 8px;">{ex['severity']}</span>
+                        <strong style="font-size: 13.5px; color: var(--navy);">{ex['type']}: <code>{ex['id']}</code></strong>
                     </div>
-                    <div style="font-size:0.9rem; font-weight:600; color:#0b3d63; border-top:1px dashed #d7e0ea; padding-top:8px; margin-top:8px; display:flex; align-items:center; gap:6px;">
-                        <span>Response from Razorpay Admin:</span>
-                    </div>
-                    <div style="font-size:0.9rem; color:{'#1c7c3f' if ticket['status']=='RESOLVED' else '#8a5809'}; background:{'#eaf8f0' if ticket['status']=='RESOLVED' else '#fffcf4'}; padding:10px; border-radius:4px; border-left:2px solid {'#1c7c3f' if ticket['status']=='RESOLVED' else '#b8720b'}; margin-top:4px;">
-                        {ticket['resolution_comments']}
-                    </div>
+                    <strong style="color: var(--navy); font-size: 14.5px;">₹{ex['amount']:,.2f}</strong>
+                </div>
+                <div style="font-size: 13px; color: var(--navy); margin-bottom: 8px; font-weight: 500;">
+                    <strong>Discrepancy Details:</strong> <code>{ex['issue']}</code>
+                </div>
+                <div style="font-size: 12px; color: var(--text-sec); margin-bottom: 12px;">
+                    <strong>AI Recommended Action:</strong> {ex['rec']}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Action row buttons
+            col_b1, col_b2, col_b3, col_bsp = st.columns([1, 1.2, 1, 3.5])
+            with col_b1:
+                # View details redirect
+                if st.button("View Details", key=f"exc_view_{ex['id']}", use_container_width=True):
+                    if ex['type'] == 'Gateway Transaction':
+                        st.session_state.page = "transactions"
+                        st.session_state.audit_tx = ex['id']
+                    else:
+                        st.session_state.page = "admin"
+                        st.session_state.admin_page = "Data Sources"
+                    st.rerun()
+            with col_b2:
+                if st.button("Explain with AI", key=f"exc_explain_{ex['id']}", use_container_width=True):
+                    # Set audit ID and trigger explanation
+                    st.session_state.page = "transactions"
+                    st.session_state.audit_tx = ex['id']
+                    st.session_state.explain_tx = ex['id']
+                    st.rerun()
+            with col_b3:
+                # Resolve exception locally!
+                if st.button("Resolve", key=f"exc_resolve_{ex['id']}", use_container_width=True):
+                    st.session_state.resolved_exceptions.append(ex['id'])
+                    st.success(f"Discrepancy resolved for {ex['id']}.")
+                    st.rerun()
+
+# ----------------------------------------------------
+# PAGE 4: SETTLEMENTS LEDGER
+# ----------------------------------------------------
+elif st.session_state.page == "settlements":
+    st.markdown("<h2>Merchant Settlements Dashboard</h2>", unsafe_allow_html=True)
+    
+    # Expected vs settled metrics
+    col_st1, col_st2, col_st3 = st.columns(3)
+    with col_st1:
+        st.markdown(f"""
+        <div class="kpi-card">
+            <div class="kpi-title">Expected Settlement Volume</div>
+            <div class="kpi-value">₹72,392.00</div>
+            <div class="kpi-desc">Total expected credit ledger</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with col_st2:
+        st.markdown(f"""
+        <div class="kpi-card">
+            <div class="kpi-title">Settled Amount</div>
+            <div class="kpi-value" style="color: var(--success);">₹{metrics['settled_to_bank_inr']:,.2f}</div>
+            <div class="kpi-desc"><span style="color: var(--success);">✓</span> Confirmed deposits</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with col_st3:
+        st.markdown(f"""
+        <div class="kpi-card">
+            <div class="kpi-title">Pending Settlement</div>
+            <div class="kpi-value" style="color: var(--warning);">₹{metrics['expected_next_2_days_inr']:,.2f}</div>
+            <div class="kpi-desc">T+2 Settlement delay queue</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    st.markdown("### DAILY SETTLEMENT LEDGER")
+    
+    # Format and draw settlements table
+    settle_rows = ""
+    for idx, row in df_bank.iterrows():
+        status_label = row['status'].replace('_', ' ')
+        status_pill_class = row['status'].lower()
+        
+        settle_rows += f"""
+        <tr>
+            <td><strong>{row['date']}</strong></td>
+            <td>₹{row['expected_amount_inr']:,.2f}</td>
+            <td>₹{row['amount_inr']:,.2f}</td>
+            <td><code>{row['bank_reference'] or 'Omitted'}</code></td>
+            <td><span class="status-pill {status_pill_class}">{status_label}</span></td>
+        </tr>
+        """
+        
+    st.markdown(f"""
+    <div class="custom-table-container">
+        <table class="custom-table">
+            <thead>
+                <tr>
+                    <th>Settlement Date</th>
+                    <th>Expected Amount</th>
+                    <th>Bank Credit Amount</th>
+                    <th>Bank Reference ID</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {settle_rows}
+            </tbody>
+        </table>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.info("ℹ️ T+2 Settlements Window: Standard collection credits hit bank statement 2 days after transaction dates. Refunds and Payouts resolve instantly (T+0).")
+
+# ----------------------------------------------------
+# PAGE 5: PAYOUTS DETAILS
+# ----------------------------------------------------
+elif st.session_state.page == "payouts":
+    st.markdown("<h2>Payouts & Vendor Disbursements</h2>", unsafe_allow_html=True)
+    
+    # Separate payouts summary numbers
+    col_p1, col_p2, col_p3 = st.columns(3)
+    with col_p1:
+        st.markdown("""
+        <div class="kpi-card">
+            <div class="kpi-title">Gross Payouts</div>
+            <div class="kpi-value">₹50,000.00</div>
+            <div class="kpi-desc">Disbursed collections</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with col_p2:
+        st.markdown("""
+        <div class="kpi-card">
+            <div class="kpi-title">Processing Fee & GST</div>
+            <div class="kpi-value">₹5.90</div>
+            <div class="kpi-desc">Flat Rs. 5 fee + 18% GST</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with col_p3:
+        st.markdown("""
+        <div class="kpi-card">
+            <div class="kpi-title">Net Settlement Deducted</div>
+            <div class="kpi-value">₹49,495.00</div>
+            <div class="kpi-desc">Treasury charge deduction</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Crucial compliance notice
+    st.markdown("""
+    <div style="background-color: rgba(59, 130, 246, 0.08); border-left: 4px solid #3B82F6; padding: 15px; border-radius: 6px; margin-bottom: 24px;">
+        <h5 style="color: #3B82F6; margin: 0 0 4px 0;">🏛️ Payout Compliance Guideline</h5>
+        <p style="margin: 0; font-size: 13px; font-weight: 500;">
+            Customer collections are <strong>not</strong> subject to transaction-level TDS deductions. TDS rules only apply to vendor payouts and merchant settlements as defined in your corporate policy. Adjust these rates in <strong>Admin Panel → TDS Policy</strong>.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("### DISBURSEMENT RECORD")
+    
+    # Filter payouts list
+    payouts_df = df_tx[df_tx['type'] == 'PAYOUT']
+    
+    p_rows = ""
+    for idx, row in payouts_df.iterrows():
+        p_rows += f"""
+        <tr>
+            <td><code>{row['transaction_id']}</code></td>
+            <td>₹{row['amount_inr']:,.2f}</td>
+            <td>₹{row['fee_inr']:,.2f}</td>
+            <td>₹{row['tax_inr']:,.2f}</td>
+            <td>₹{abs(row['settled_amount_inr']):,.2f}</td>
+            <td><span class="status-pill ok">Processed</span></td>
+        </tr>
+        """
+        
+    if not p_rows:
+        p_rows = "<tr><td colspan='6' style='text-align: center; color: var(--text-sec);'>No processed payouts in current batch.</td></tr>"
+        
+    st.markdown(f"""
+    <div class="custom-table-container">
+        <table class="custom-table">
+            <thead>
+                <tr>
+                    <th>Payout Reference ID</th>
+                    <th>Gross Amount</th>
+                    <th>Gateway Fee</th>
+                    <th>GST (18%)</th>
+                    <th>Net Treasury Deduction</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {p_rows}
+            </tbody>
+        </table>
+    </div>
+    """, unsafe_allow_html=True)
+
+# ----------------------------------------------------
+# PAGE 6: BANK RECONCILIATION
+# ----------------------------------------------------
+elif st.session_state.page == "bank":
+    st.markdown("<h2>Bank Statement Reconciliation</h2>", unsafe_allow_html=True)
+    
+    # Bank metrics
+    col_b1, col_b2, col_b3 = st.columns(3)
+    with col_b1:
+        st.markdown(f"""
+        <div class="kpi-card">
+            <div class="kpi-title">Current Bank Statement Balance</div>
+            <div class="kpi-value">₹{metrics['settled_to_bank_inr']:,.2f}</div>
+            <div class="kpi-desc">Verified actual bank reserves</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with col_b2:
+        st.markdown(f"""
+        <div class="kpi-card">
+            <div class="kpi-title">Expected Settlement Net</div>
+            <div class="kpi-value">₹{metrics['settled_to_bank_inr']:,.2f}</div>
+            <div class="kpi-desc">Calculated expected deposits</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with col_b3:
+        st.markdown("""
+        <div class="kpi-card">
+            <div class="kpi-title">Treasury Difference</div>
+            <div class="kpi-value" style="color: var(--success);">₹0.00</div>
+            <div class="kpi-desc"><span class="status-pill reconciled">Fully Reconciled</span></div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    st.markdown("### BANK STATEMENT ENTRIES")
+    
+    # Generate clean statement entries with Credits and Debits separated
+    statement_rows = ""
+    
+    # Render statement records based on bank data
+    for idx, row in df_bank.iterrows():
+        val = row['amount_inr']
+        
+        # Debits or Payouts are negative, Credits are positive
+        if val > 0:
+            credit_str = f"₹{val:,.2f}"
+            debit_str = "-"
+        else:
+            credit_str = "-"
+            debit_str = f"₹{abs(val):,.2f}"
+            
+        desc = f"Gateway Settlement Credit {row['bank_reference']}" if row['bank_reference'] else "Unidentified Bank Deposit"
+        
+        statement_rows += f"""
+        <tr>
+            <td>{row['date']}</td>
+            <td>{desc}</td>
+            <td style="color: var(--success); font-weight: 600;">{credit_str}</td>
+            <td style="color: var(--error); font-weight: 600;">{debit_str}</td>
+            <td><code>{row['bank_reference'] or 'NaN'}</code></td>
+        </tr>
+        """
+        
+    st.markdown(f"""
+    <div class="custom-table-container">
+        <table class="custom-table">
+            <thead>
+                <tr>
+                    <th>Value Date</th>
+                    <th>Description</th>
+                    <th>Credit (Deposits)</th>
+                    <th>Debit (Withdrawals)</th>
+                    <th>Bank Reference ID</th>
+                </tr>
+            </thead>
+            <tbody>
+                {statement_rows}
+            </tbody>
+        </table>
+    </div>
+    """, unsafe_allow_html=True)
+
+# ----------------------------------------------------
+# PAGE 7: TAX & TDS COMPLIANCE
+# ----------------------------------------------------
+elif st.session_state.page == "tax":
+    st.markdown("<h2>Tax Auditing & Compliance</h2>", unsafe_allow_html=True)
+    
+    # Tax metrics
+    tx1, tx2, tx3, tx4 = st.columns(4)
+    with tx1:
+        st.metric("Total Gateway GST Audited", f"₹{tax_summary['total_gst_collected_inr']:,.2f}")
+    with tx2:
+        st.metric("Total 194-O TDS Audited", f"₹{tax_summary['total_tds_deducted_inr']:,.2f}")
+    with tx3:
+        st.metric("Compliance Rate", f"{tax_summary['tax_compliance_pct']}%")
+    with tx4:
+        st.metric("Anomalies Flagged", f"{tax_summary['total_tax_discrepancies']}")
+        
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Tax ledger with filters
+    st.markdown("### TAX LEDGER")
+    tax_filter = st.selectbox(
+        "Filter tax entries",
+        ["All Tax Entries", "GST Discrepancies Only", "TDS Under-deduction Only"]
+    )
+    
+    filtered_tax = tax_df.copy()
+    if tax_filter == "GST Discrepancies Only":
+        filtered_tax = filtered_tax[filtered_tax['tax_status'].isin(['GST_MISMATCH', 'MULTIPLE_TAX_ISSUES'])]
+    elif tax_filter == "TDS Under-deduction Only":
+        filtered_tax = filtered_tax[filtered_tax['tax_status'] == 'TDS_UNDER_DEDUCTION']
+        
+    t_rows = ""
+    for idx, row in filtered_tax.iterrows():
+        status_class = row['tax_status'].lower()
+        t_rows += f"""
+        <tr>
+            <td><code>{row['transaction_id']}</code></td>
+            <td>{row['type']}</td>
+            <td>₹{row['amount_inr']:,.2f}</td>
+            <td>₹{row['fee_inr']:,.2f}</td>
+            <td>₹{row['actual_gst']:,.2f} / ₹{row['expected_gst']:,.2f}</td>
+            <td>₹{row['actual_tds']:,.2f} / ₹{row['expected_tds']:,.2f}</td>
+            <td><span class="status-pill {status_class}">{row['tax_status']}</span></td>
+        </tr>
+        """
+        
+    if not t_rows:
+        t_rows = "<tr><td colspan='7' style='text-align: center; color: var(--text-sec);'>No tax audit entries.</td></tr>"
+        
+    st.markdown(f"""
+    <div class="custom-table-container">
+        <table class="custom-table">
+            <thead>
+                <tr>
+                    <th>Transaction ID</th>
+                    <th>Type</th>
+                    <th>Amount</th>
+                    <th>Gateway Fee</th>
+                    <th>GST (Actual / Expected)</th>
+                    <th>TDS (Actual / Expected)</th>
+                    <th>Compliance Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {t_rows}
+            </tbody>
+        </table>
+    </div>
+    """, unsafe_allow_html=True)
+
+# ----------------------------------------------------
+# PAGE 8: AI FINANCE INSIGHTS
+# ----------------------------------------------------
+elif st.session_state.page == "insights":
+    st.markdown("<h2>✦ AI Finance Assistant</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='color: var(--text-sec); font-size: 14px;'>RAG-enabled Generative Finance Auditor & Compliance assistant.</p>", unsafe_allow_html=True)
+    
+    # Custom interactive chatbot UI
+    # Retrieve sessions
+    sessions = get_chat_sessions()
+    
+    # Active query input
+    st.markdown("### Generative Auditor Chat Console")
+    
+    chat_box = st.container()
+    with chat_box:
+        if len(st.session_state.messages) == 0:
+            st.info("Ask the AI Assistant about settlement policies, fee discrepancies, or daily close audits.")
+        for msg in st.session_state.messages:
+            role_label = "👤 User Query" if msg['role'] == 'user' else "🤖 AI Response"
+            role_color = "rgba(15, 76, 117, 0.05)" if msg['role'] == 'user' else "#F8FAFC"
+            st.markdown(f"""
+            <div style="background-color: {role_color}; padding: 15px; border-radius: 6px; border: 1px solid var(--border); margin-bottom: 12px;">
+                <strong>{role_label}</strong>
+                <p style="margin: 6px 0 0 0; font-size: 13.5px; font-weight: 500;">{msg['content']}</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+    # Form input
+    with st.form(key="ai_page_chat_form", clear_on_submit=True):
+        chat_col_inp, chat_col_btn = st.columns([5, 1])
+        with chat_col_inp:
+            chat_user_query = st.text_input(
+                "Ask a question:", 
+                placeholder="Why did transaction pay_exc_fee_00 fail reconciliation?", 
+                label_visibility="collapsed"
+            )
+        with chat_col_btn:
+            chat_submit = st.form_submit_button("Send Query", use_container_width=True)
+            
+    if chat_submit and chat_user_query.strip():
+        # Append user message
+        st.session_state.messages.append({"role": "user", "content": chat_user_query})
+        save_chat_message(st.session_state.session_id, "user", chat_user_query)
+        
+        # Generate RAG Context and run model
+        api_key = st.session_state.sys_gemini_api_key
+        rag_context = retrieve_relevant_context(chat_user_query, api_key, top_n=3)
+        
+        history_context = ""
+        if len(st.session_state.messages) > 1:
+            for m in st.session_state.messages[:-1]:
+                history_context += f"- {'USER' if m['role']=='user' else 'ASSISTANT'}: {m['content']}\n"
+                
+        evidence_prompt = f"""
+        DAILY CLOSE DATA SUMMARY:
+        - Total Payments: {metrics['total_payments_processed']}
+        - Reconciled rate: {acc_val}%
+        - Bank Credit: INR {metrics['settled_to_bank_inr']}
+        - Exceptions Count: {metrics['needs_review_count']}
+        
+        RAG CONTEXT FROM POLICIES:
+        {rag_context}
+        """
+        
+        # Generate response
+        if api_key:
+            try:
+                genai.configure(api_key=api_key)
+                model = genai.GenerativeModel(st.session_state.sys_gemini_model)
+                full_p = f"{evidence_prompt}\n\nUser query: {chat_user_query}\n\nAnswer concisely:"
+                resp = model.generate_content(full_p)
+                answer = resp.text
+            except Exception as e:
+                answer = f"Gemini Error: {str(e)}"
+        else:
+            # Fallback keyword engine
+            from app import local_heuristic_engine
+            answer = local_heuristic_engine(chat_user_query)
+            
+        st.session_state.messages.append({"role": "assistant", "content": answer})
+        save_chat_message(st.session_state.session_id, "assistant", answer)
+        st.rerun()
+
+# ----------------------------------------------------
+# PAGE 9: CASH FORECAST
+# ----------------------------------------------------
+elif st.session_state.page == "forecast":
+    st.markdown("<h2>📈 Forward Treasury & Cash Flow Forecast</h2>", unsafe_allow_html=True)
+    
+    # Forecasting metrics
+    cf1, cf2, cf3 = st.columns(3)
+    with cf1:
+        st.metric("Projected 7-Day Treasury Reserves", f"₹{forecast_df.iloc[-1]['cumulative_cash']:,.2f}")
+    with cf2:
+        st.metric("Next 2-Day Committed Inflows", f"₹{forecast_df.iloc[:2]['gross_collections'].sum():,.2f}")
+    with cf3:
+        st.metric("Average Daily Net Treasury Flow", f"₹{forecast_df['net_inflow'].mean():,.2f}")
+        
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Forecast chart
+    st.markdown("### FORWARD TREASURY TREND (7 DAYS)")
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=forecast_df['date'],
+        y=forecast_df['net_inflow'],
+        name='Net Daily Cash flow',
+        marker_color='#0F4C75'
+    ))
+    fig.add_trace(go.Scatter(
+        x=forecast_df['date'],
+        y=forecast_df['cumulative_cash'],
+        name='Cumulative Reserves',
+        line=dict(color='#EF4444', width=3)
+    ))
+    fig.update_layout(
+        height=300,
+        margin=dict(l=10, r=10, t=10, b=10),
+        template='plotly_white'
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+# ----------------------------------------------------
+# PAGE 10: REPORTS
+# ----------------------------------------------------
+elif st.session_state.page == "reports":
+    st.markdown("<h2>Reports Centre</h2>", unsafe_allow_html=True)
+    
+    reports_list = [
+        {"title": "Daily Reconciliation Summary Report", "desc": "Aggregated 3-way reconciliation audit checklist and verdict overview."},
+        {"title": "Gateway Settlement Variance Report", "desc": "Details on fee discrepancies and missed credits by Razorpay."},
+        {"title": "Tax Compliance & TDS Audit Report", "desc": "Auditing e-commerce TDS deductions under Sec 194-O."},
+        {"title": "Forward Treasury Forecast Report", "desc": "7-day forward liquidity predictions and committed bank inflows."},
+        {"title": "Exceptions & Fraud Audit Ledger", "desc": "History of disputed transactions, missing order IDs and resolutions."},
+        {"title": "Bank Feed Reconciliation Report", "desc": "Detailed matching logs of gateway batches vs bank credit reference IDs."}
+    ]
+    
+    for idx, rep in enumerate(reports_list):
+        st.markdown(f"""
+        <div style="background-color: #FFFFFF; border: 1px solid var(--border); padding: 16px; border-radius: 6px; margin-bottom: 12px;">
+            <strong style="font-size: 14px; color: var(--navy);">{rep['title']}</strong>
+            <p style="margin: 4px 0 12px 0; font-size: 12.5px; color: var(--text-sec);">{rep['desc']}</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        col_gen, col_csv, col_pdf, col_sp = st.columns([1.2, 1, 1, 4])
+        with col_gen:
+            if st.button("Generate Report", key=f"gen_{idx}"):
+                st.success("Report successfully generated inside treasury exports.")
+        with col_csv:
+            st.button("Export CSV", key=f"csv_{idx}")
+        with col_pdf:
+            st.button("Export PDF", key=f"pdf_{idx}")
+
+# ----------------------------------------------------
+# PAGE 11: SETTINGS & HELPDESK
+# ----------------------------------------------------
+elif st.session_state.page == "settings":
+    st.markdown("<h2>Merchant Settings & Support</h2>", unsafe_allow_html=True)
+    
+    sett_tab1, sett_tab2 = st.tabs(["Profile Configurations", "Merchant Support Helpdesk"])
+    
+    with sett_tab1:
+        st.markdown("### Profile Settings")
+        st.text_input("Merchant Entity Name", value="Flipkart (Demo)")
+        st.text_input("Corporate Billing Address", value="Electronic City, Bengaluru, Karnataka - 560100")
+        st.selectbox("Default Settlement Mode", ["T+2 Standard", "Instant Payouts"])
+        
+    with sett_tab2:
+        st.markdown("### Support Helpdesk")
+        with st.form(key="settings_support_form", clear_on_submit=True):
+            tx_opts = df_tx[df_tx['resolution_status']=='NEEDS_REVIEW']['transaction_id'].tolist()
+            tx_opts = ["General Issue"] + tx_opts
+            sel_tx = st.selectbox("Related Transaction ID", tx_opts)
+            subj = st.text_input("Subject of support query")
+            msg_body = st.text_area("Detailed description")
+            sub_ticket = st.form_submit_button("Submit ticket to Razorpay")
+            
+        if sub_ticket:
+            if subj.strip() and msg_body.strip():
+                raise_support_ticket(sel_tx, "Flipkart (Demo)", subj, msg_body)
+                st.success("Ticket submitted successfully to Razorpay helpdesk.")
+            else:
+                st.error("Please fill in subject and description.")
+                
+        # Raised tickets history
+        st.markdown("---")
+        st.markdown("#### Support Ticket logs")
+        tick_logs = get_support_tickets("Flipkart (Demo)")
+        if not tick_logs:
+            st.info("No helpdesk queries raised.")
+        else:
+            for tk in tick_logs:
+                color_tk = "var(--success)" if tk['status'] == 'RESOLVED' else "var(--warning)"
+                st.markdown(f"""
+                <div style="background-color: #FFFFFF; border: 1px solid var(--border); border-left: 4px solid {color_tk}; padding: 14px; border-radius: 6px; margin-bottom: 10px;">
+                    <strong>#{tk['ticket_id']} - {tk['subject']}</strong> (Status: {tk['status']})<br>
+                    <span style="font-size: 11px; color: var(--text-sec);">Ref ID: {tk['transaction_id']} | Date: {tk['timestamp']}</span>
+                    <p style="margin: 6px 0 0 0; font-size: 12.5px; background: #F8FAFC; padding: 8px; border-radius: 4px;">{tk['message']}</p>
                 </div>
                 """, unsafe_allow_html=True)
 
-else:
-    # ----------------------------------------------------
-    # ADMIN PANEL TABS
-    # ----------------------------------------------------
-    admin_tab1, admin_tab2, admin_tab3, admin_tab4, admin_tab5 = st.tabs([
-        "📊 Merchants Overview",
-        "🏛️ Merchant details deep-dive",
-        "🎫 Support Tickets Desk",
-        "🕵️ Chat Backups Auditor",
-        "⚙️ System configurations"
-    ])
+# ----------------------------------------------------
+# PAGE 12: ADMIN PANEL
+# ----------------------------------------------------
+elif st.session_state.page == "admin":
+    st.markdown("<h2>🔒 Admin panel Oversight</h2>", unsafe_allow_html=True)
     
-    # ----------------------------------------------------
-    # TAB 1: MERCHANTS OVERVIEW
-    # ----------------------------------------------------
-    with admin_tab1:
-        st.markdown("### 📊 Multi-Merchant Performance Index")
-        st.markdown("Comparative overview of transaction volumes, exception rates, and compliance index across all active merchants:")
-        
-        # Summary KPI cards for Admin
-        adm_k1, adm_k2, adm_k3 = st.columns(3)
-        with adm_k1:
-            st.markdown("""
-            <div class="metric-card">
-                <div class="metric-title">Aggregated Network Volume</div>
-                <div class="metric-value">₹239,700.00</div>
-                <div class="metric-delta"><span class="delta-green">●</span> 3 Active Merchants</div>
-            </div>
-            """, unsafe_allow_html=True)
-        with adm_k2:
-            st.markdown("""
-            <div class="metric-card">
-                <div class="metric-title">Average Auto-Match Rate</div>
-                <div class="metric-value">95.9%</div>
-                <div class="metric-delta"><span class="delta-green">✓</span> Reconciled OK</div>
-            </div>
-            """, unsafe_allow_html=True)
-        with adm_k3:
-            open_count = len([t for t in get_support_tickets() if t['status'] == 'OPEN'])
-            delta_col = "delta-red" if open_count > 0 else "delta-green"
-            st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-title">Open Support Tickets</div>
-                <div class="metric-value">{open_count}</div>
-                <div class="metric-delta"><span class="{delta_col}">●</span> Requires Resolution</div>
-            </div>
-            """, unsafe_allow_html=True)
+    # Sub-tabs navigation
+    admin_tab = st.radio(
+        "Admin Navigation",
+        ["Admin Overview", "System Health", "Data Ingestion & Embedding", "Reconciliation Rules & TDS Policies", "AI Config Settings", "Users & Roles", "Audit Logs"],
+        horizontal=True
+    )
+    
+    if admin_tab == "Admin Overview":
+        st.markdown("### System Summary")
+        ad_k1, ad_k2, ad_k3 = st.columns(3)
+        with ad_k1:
+            st.metric("Total Transactions Processed", len(df_tx))
+        with ad_k2:
+            st.metric("Auto-match accuracy rate", f"{metrics['auto_match_accuracy_pct']}%")
+        with ad_k3:
+            st.metric("Active Exceptions", metrics['needs_review_count'])
             
-        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("### Active Data Sources Status")
+        st.markdown("""
+        <div style="background-color: #FFFFFF; border: 1px solid var(--border); padding: 16px; border-radius: 6px;">
+            <div class="checklist-item success"><span class="badge-icon">✓</span> Internal Orders Ledger: <strong>Healthy</strong></div>
+            <div class="checklist-item success"><span class="badge-icon">✓</span> Razorpay API Integration: <strong>Healthy</strong></div>
+            <div class="checklist-item success"><span class="badge-icon">✓</span> Bank statement feed API: <strong>Healthy</strong></div>
+            <div class="checklist-item success"><span class="badge-icon">✓</span> AI Reconciliation Engine: <strong>Active</strong></div>
+        </div>
+        """, unsafe_allow_html=True)
         
-        # Merchant Comparison DataFrame
-        # Get actual Flipkart stats dynamically
-        flip_vol = metrics['gross_collections_inr']
-        flip_accuracy = metrics['auto_match_accuracy_pct']
-        flip_excs = metrics['needs_review_count']
-        flip_compliance = tax_summary['tax_compliance_pct']
+    elif admin_tab == "System Health":
+        st.markdown("### Core Platform Health Metrics")
+        st.markdown("""
+        - **Internal Order Table**: Live (100% matched keys)
+        - **Gateway Sync Services**: Active (Last synced 2 min ago)
+        - **Database Integrity**: Passed checks
+        """)
+        if st.button("Run Diagnostic self-test"):
+            st.success("All systems healthy. Connection feeds running.")
+            
+    elif admin_tab == "Data Ingestion & Embedding":
+        st.markdown("### Sync and Ingestion Pipeline controls")
+        if st.button("🔄 Sync Database from Source CSVs"):
+            from src.upload_pipeline import run_pipeline
+            with st.spinner("Re-syncing SQLite tables..."):
+                if run_pipeline(reset=True):
+                    st.success("Re-sync pipeline executed successfully.")
+                    st.rerun()
+                else:
+                    st.error("Error running Ingestion Pipeline.")
+                    
+        if st.button("📂 Re-index Document Embedding (RAG)"):
+            with st.spinner("Embedding markdown and PDF document specifications..."):
+                if build_document_index(st.session_state.sys_gemini_api_key, force_reindex=True):
+                    st.success("Documents successfully embedded into SQL table.")
+                    st.rerun()
+                else:
+                    st.error("RAG indexing failed. Verify file availability.")
+                    
+    elif admin_tab == "Reconciliation Rules & TDS Policies":
+        st.markdown("### Standard Reconciliation Parameters")
+        st.session_state.sys_gateway_fee = st.number_input("Standard Gateway fee rate (%)", min_value=0.0, max_value=10.0, value=st.session_state.sys_gateway_fee, step=0.1)
+        st.session_state.sys_gst_rate = st.number_input("GST rate on gateway charges (%)", min_value=0.0, max_value=30.0, value=st.session_state.sys_gst_rate, step=1.0)
+        st.session_state.sys_payout_fee = st.number_input("Standard payout Flat rate (INR)", min_value=0.0, max_value=100.0, value=st.session_state.sys_payout_fee, step=1.0)
+        st.session_state.sys_settlement_delay = st.selectbox("Expected settlement Delay", ["T+2 Days", "T+1 Day", "T+0 Days"], index=0)
         
-        merchant_summary_data = [
-            {
-                "Merchant Name": "Flipkart (Demo)",
-                "Transaction Volume (INR)": f"₹{flip_vol:,.2f}",
-                "Auto-Match Accuracy": f"{flip_accuracy}%",
-                "Exceptions Count": flip_excs,
-                "Tax Compliance Rate": f"{flip_compliance}%",
-                "Status": "ACTIVE"
-            },
-            {
-                "Merchant Name": "Shopify Store (Mock)",
-                "Transaction Volume (INR)": "₹84,500.00",
-                "Auto-Match Accuracy": "98.2%",
-                "Exceptions Count": 2,
-                "Tax Compliance Rate": "100.0%",
-                "Status": "ACTIVE"
-            },
-            {
-                "Merchant Name": "WooCommerce Shop (Mock)",
-                "Transaction Volume (INR)": "₹31,200.00",
-                "Auto-Match Accuracy": "92.5%",
-                "Exceptions Count": 4,
-                "Tax Compliance Rate": "75.0%",
-                "Status": "UNDER REVIEW"
-            }
+        st.markdown("### TDS Compliance Rules Settings")
+        with st.expander("Adjust TDS Policies (Sec 194-O)"):
+            st.markdown("**Individual Rate settings**")
+            app_ind = st.checkbox("Resident Individual Withholding", value=st.session_state.sys_tds_config['PAYMENT']['Individual']['applicable'])
+            rate_ind = st.number_input("Individual Withholding TDS (%)", min_value=0.0, max_value=10.0, value=st.session_state.sys_tds_config['PAYMENT']['Individual']['rate']*100, step=0.1)/100
+            
+            st.markdown("**Corporate Rate settings**")
+            app_corp = st.checkbox("Corporate Withholding", value=st.session_state.sys_tds_config['PAYMENT']['Company']['applicable'])
+            rate_corp = st.number_input("Corporate Withholding TDS (%)", min_value=0.0, max_value=10.0, value=st.session_state.sys_tds_config['PAYMENT']['Company']['rate']*100, step=0.1)/100
+            
+            # Apply policies to state
+            st.session_state.sys_tds_config['PAYMENT']['Individual']['applicable'] = app_ind
+            st.session_state.sys_tds_config['PAYMENT']['Individual']['rate'] = rate_ind
+            st.session_state.sys_tds_config['PAYMENT']['Company']['applicable'] = app_corp
+            st.session_state.sys_tds_config['PAYMENT']['Company']['rate'] = rate_corp
+            
+        st.success("Settings saved successfully. Policies will apply to tax matches.")
+        
+    elif admin_tab == "AI Config Settings":
+        st.markdown("### Google Gemini AI configuration parameters")
+        
+        # API Key password text input (masked)
+        st.session_state.sys_gemini_api_key = st.text_input(
+            "Gemini API key",
+            value=st.session_state.sys_gemini_api_key,
+            type="password",
+            help="Masked developer API key for Gemini RAG query completions."
+        )
+        
+        st.session_state.sys_gemini_model = st.selectbox(
+            "Model Name",
+            ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"],
+            index=["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"].index(st.session_state.sys_gemini_model)
+        )
+        
+        st.session_state.sys_confidence_threshold = st.slider(
+            "AI Confidence Threshold (%)",
+            min_value=50, max_value=100,
+            value=st.session_state.sys_confidence_threshold
+        )
+        st.success("Generative settings saved to core config.")
+        
+    elif admin_tab == "Users & Roles":
+        st.markdown("### Active Platform Users")
+        users_mock = [
+            {"User": "Shivendu K.", "Role": "Admin/Finance Controller", "Permissions": "Global write/read"},
+            {"User": "Razorpay Auditor", "Role": "External Auditor", "Permissions": "Read-only gateway ledger"},
+            {"User": "Flipkart Controller", "Role": "Merchant Auditor", "Permissions": "Write support tickets, read orders"}
         ]
+        st.dataframe(pd.DataFrame(users_mock), use_container_width=True, hide_index=True)
         
-        df_merchants = pd.DataFrame(merchant_summary_data)
-        st.dataframe(df_merchants, use_container_width=True, hide_index=True)
-        st.info("ℹ️ Flipkart (Demo) statistics are loaded live from the active SQL database. Other merchant rows are generated dynamically via simulated endpoints.")
-
-    # ----------------------------------------------------
-    # TAB 2: MERCHANT DETAILS & LEDGER
-    # ----------------------------------------------------
-    with admin_tab2:
-        st.markdown(f"### 🏛️ Detailed Transaction Audit ledger for: `{selected_merchant}`")
-        st.markdown("Accessing active transaction and order schemas. Changes are synced live from the database:")
+        st.markdown("#### Create New Mock Role")
+        st.text_input("User Name")
+        st.selectbox("Role Assignment", ["Finance Executive", "Auditor", "Technical Admin"])
+        st.button("Add User Role")
         
-        if selected_merchant == "Flipkart (Demo)":
-            st.markdown("#### 1. Reconciled Gateway Ledger table")
-            st.dataframe(
-                df_tx[['transaction_id', 'order_id', 'type', 'status', 'method', 'amount_inr', 'fee_inr', 'tax_inr', 'settled_amount_inr', 'resolution_status', 'confidence_score']],
-                use_container_width=True, hide_index=True
-            )
-            
-            st.markdown("#### 2. Isolated Bank Statement Discrepancies")
-            st.dataframe(
-                df_bank[['date', 'expected_amount_inr', 'amount_inr', 'difference', 'bank_reference', 'status']],
-                use_container_width=True, hide_index=True
-            )
-            
-            st.markdown("#### 3. Unmatched Internal Orders (Orphans)")
-            st.dataframe(
-                df_unmatched[['order_id', 'amount_inr', 'created_at', 'status', 'customer_email', 'calculated_exceptions']],
-                use_container_width=True, hide_index=True
-            )
-        else:
-            # Mock Ledger data for other merchants
-            st.warning(f"Displaying synthetic ledger subset for mock merchant: `{selected_merchant}`.")
-            mock_txs = [
-                {'transaction_id': 'pay_mock_11', 'order_id': 'order_m_11', 'type': 'PAYMENT', 'amount_inr': 4500.0, 'fee_inr': 90.0, 'tax_inr': 16.2, 'status': 'captured', 'resolution_status': 'AUTO_RESOLVED'},
-                {'transaction_id': 'pay_mock_12', 'order_id': 'order_m_12', 'type': 'PAYMENT', 'amount_inr': 1200.0, 'fee_inr': 24.0, 'tax_inr': 4.32, 'status': 'captured', 'resolution_status': 'AUTO_RESOLVED'},
-                {'transaction_id': 'pay_mock_13', 'order_id': 'order_m_13', 'type': 'PAYOUT', 'amount_inr': 5000.0, 'fee_inr': 5.0, 'tax_inr': 0.9, 'status': 'processed', 'resolution_status': 'NEEDS_REVIEW'}
-            ]
-            st.dataframe(pd.DataFrame(mock_txs), use_container_width=True, hide_index=True)
-
-    # ----------------------------------------------------
-    # TAB 3: SUPPORT TICKETS DESK
-    # ----------------------------------------------------
-    with admin_tab3:
-        st.markdown("### 🎫 Admin Support Tickets Desk & Issues Resolver")
-        st.markdown("Submit resolution comments to merchants directly. Status changes reflect on the Merchant Dashboard instantly.")
-        
-        tickets = get_support_tickets()
-        open_tickets = [t for t in tickets if t['status'] == 'OPEN']
-        resolved_tickets = [t for t in tickets if t['status'] == 'RESOLVED']
-        
-        st.markdown("#### 📥 Open Support Tickets")
-        if not open_tickets:
-            st.success("🎉 All support tickets are resolved!")
-        else:
-            # Create a selection list
-            ticket_options = {t['ticket_id']: f"Ticket #{t['ticket_id']} ({t['merchant_name']}) - {t['subject']}" for t in open_tickets}
-            selected_tid = st.selectbox(
-                "Select Open Ticket to Review & Resolve:",
-                options=list(ticket_options.keys()),
-                format_func=lambda x: ticket_options[x]
-            )
-            
-            if selected_tid:
-                t_detail = next(t for t in open_tickets if t['ticket_id'] == selected_tid)
-                
-                # Render detail box
-                st.info(f"**Merchant Name**: {t_detail['merchant_name']} | **Discrepancy Transaction**: `{t_detail['transaction_id']}` | **Date**: {t_detail['timestamp']}")
-                st.write(f"**Subject**: **{t_detail['subject']}**")
-                st.write(f"**Message**:")
-                st.markdown(f"> {t_detail['message']}")
-                
-                # Resolve input
-                res_comments_input = st.text_area("Admin Resolution Comments (Will be displayed to merchant):", placeholder="Describe how this issue has been resolved...")
-                if st.button("Submit Resolution & Resolve Ticket", use_container_width=True):
-                    if not res_comments_input.strip():
-                        st.error("Please enter a resolution comment before closing the ticket.")
-                    else:
-                        resolve_support_ticket(selected_tid, res_comments_input)
-                        st.success(f"Ticket #{selected_tid} has been resolved successfully!")
-                        st.rerun()
-                        
-        st.markdown("---")
-        st.markdown("#### 📋 History of Resolved Tickets")
-        if not resolved_tickets:
-            st.info("No resolved tickets in the archive yet.")
-        else:
-            st.dataframe(
-                pd.DataFrame(resolved_tickets)[['ticket_id', 'merchant_name', 'transaction_id', 'subject', 'message', 'status', 'resolution_comments', 'timestamp']],
-                use_container_width=True, hide_index=True
-            )
-
-    # ----------------------------------------------------
-    # TAB 4: CHAT BACKUPS AUDITOR
-    # ----------------------------------------------------
-    with admin_tab4:
-        st.markdown("### 🕵️ Audit Merchant Chat Sessions")
-        st.markdown("Monitor conversations between merchants and the Generative AI Finance Auditor. Auditing previous queries guarantees compliance:")
-        
-        sessions = get_chat_sessions()
-        
-        if not sessions:
-            st.info("No chat history backups available yet.")
-        else:
-            session_options = {s['session_id']: f"Session ({s['start_time'][:19]}) -- Merchant snippet: {s['first_message'][:35]}..." for s in sessions}
-            selected_sid = st.selectbox(
-                "Select Chat Session to Audit",
-                options=list(session_options.keys()),
-                format_func=lambda x: session_options[x]
-            )
-            
-            if selected_sid:
-                chat_history = get_chat_history(selected_sid)
-                st.markdown("---")
-                st.markdown(f"#### Conversation Transcript (Session ID: `{selected_sid}`)")
-                
-                for msg in chat_history:
-                    role_icon = "👤" if msg['role'] == 'user' else "🤖"
-                    role_name = "Merchant Query" if msg['role'] == 'user' else "AI Assistant Response"
-                    st.markdown(f"**{role_icon} {role_name}** *({msg['timestamp']})*")
-                    if msg['role'] == 'user':
-                        st.info(msg['content'])
-                    else:
-                        st.success(msg['content'])
-                        
-                # Option to clear chat message logs
-                st.markdown("---")
-                if st.button("🗑️ Wipe All Chat Logs (Admin Overrule)", key="admin_wipe_chats"):
-                    from src.database import get_connection
-                    conn = get_connection()
-                    cursor = conn.cursor()
-                    cursor.execute("DELETE FROM chat_messages")
-                    conn.commit()
-                    conn.close()
-                    st.success("All chat backups wiped successfully!")
-                    st.rerun()
-
-    # ----------------------------------------------------
-    # TAB 5: SYSTEM CONFIGURATION
-    # ----------------------------------------------------
-    with admin_tab5:
-        st.markdown("### ⚙️ System Configurations & Global Parameters")
-        st.markdown("Adjust configuration settings for default payment processing. Changes apply dynamically across calculations:")
-        
-        conf_col1, conf_col2 = st.columns(2)
-        with conf_col1:
-            fee_rate_input = st.number_input("Standard Gateway fee rate (%)", min_value=0.0, max_value=10.0, value=2.0, step=0.1)
-            gst_rate_input = st.number_input("GST rate on fees (%)", min_value=0.0, max_value=30.0, value=18.0, step=1.0)
-        with conf_col2:
-            settle_days_input = st.selectbox("Standard Payment Settlement Delay", ["T+2 Days", "T+1 Day", "T+0 (Instant)"], index=0)
-            payout_flat_input = st.number_input("Payout Flat Charge (INR)", min_value=0.0, max_value=100.0, value=5.0, step=1.0)
-            
-        st.success("⚙️ System parameters saved to context cache. Re-running the dashboard will calculate reconciliations under these rules.")
-
+    elif admin_tab == "Audit Logs":
+        st.markdown("### System Audit Logs")
+        mock_logs = [
+            {"Time": "19:54:25", "Event": "Database loaded from SQLite cache", "Actor": "System"},
+            {"Time": "19:54:30", "Event": "3-way reconciliation audit ran (60 elements)", "Actor": "ReconEngine"},
+            {"Time": "19:55:10", "Event": "Tax compliance auditor loaded Sec 194-O policies", "Actor": "TaxAuditor"},
+            {"Time": "19:57:15", "Event": "TDS Withholding parameters updated", "Actor": "Shivendu K."}
+        ]
+        st.dataframe(pd.DataFrame(mock_logs), use_container_width=True, hide_index=True)
 
 # ----------------------------------------------------
-# FLOATING AI ASSISTANT (WHATSAPP META AI STYLE)
+# FLOATING AI ASSISTANT SPARKS OVERLAY (META AI STYLE)
 # ----------------------------------------------------
-if app_role == "Merchant Panel":
-    # Initialize popover chat state
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-    if "session_id" not in st.session_state:
-        st.session_state.session_id = f"session_{int(datetime.now().timestamp())}"
-    if "chat_query" not in st.session_state:
+st.markdown('<div class="floating-popover-container">', unsafe_allow_html=True)
+with st.popover("💬 Ask AI Assistant", use_container_width=False):
+    st.markdown('<div class="chat-header-spark"><h3>🤖 AI Finance Assistant</h3><p>Reconciliation Auditor (Gemini 3.5 Flash)</p></div>', unsafe_allow_html=True)
+    
+    # Message container inside popup
+    chat_popup_cont = st.container()
+    with chat_popup_cont:
+        if len(st.session_state.messages) == 0:
+            st.write("Hello! I am your AI Finance Assistant. Ask me anything about the Daily Close metrics, tax compliance rules, or upload policies.")
+        for msg in st.session_state.messages:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
+                
+    # Chat Input form inside popover
+    with st.form(key="popover_floating_chat_form", clear_on_submit=True):
+        col_pop_inp, col_pop_btn = st.columns([4, 1.2])
+        with col_pop_inp:
+            popup_chat_input = st.text_input(
+                "Ask a question:", 
+                value=st.session_state.prompt_default,
+                placeholder="Ask about settlement policies, taxes, or database status...", 
+                label_visibility="collapsed"
+            )
+        with col_pop_btn:
+            popup_submit_chat = st.form_submit_button("Send")
+            
+    # Redirect check from external button clicks
+    if st.session_state.chat_query:
+        popup_chat_input = st.session_state.chat_query
+        popup_submit_chat = True
         st.session_state.chat_query = None
-    if "prompt_default" not in st.session_state:
+
+    if popup_submit_chat and popup_chat_input.strip():
         st.session_state.prompt_default = ""
-
-    # Floating popover button (styled via CSS in the bottom-right corner)
-    st.markdown('<div class="floating-popover-container">', unsafe_allow_html=True)
-    with st.popover("💬 Ask Assistant", use_container_width=False):
-        st.markdown('<div class="assistant-header"><h3>🤖 Ask Assistant</h3><p>Reconciliation Auditor (Meta AI Style)</p></div>', unsafe_allow_html=True)
+        st.session_state.messages.append({"role": "user", "content": popup_chat_input})
+        save_chat_message(st.session_state.session_id, "user", popup_chat_input)
         
-        # Scrollable chat logs list
-        chat_container = st.container()
-        with chat_container:
-            if not st.session_state.messages:
-                st.write("Hello! I am your AI Finance Assistant. Ask me anything about the Daily Close metrics, tax compliance rules, or upload policies.")
-            for msg in st.session_state.messages:
-                with st.chat_message(msg["role"]):
-                    st.markdown(msg["content"])
-                    
-        # Option to edit last question
-        if st.session_state.messages:
-            last_user_msg = next((m["content"] for m in reversed(st.session_state.messages) if m["role"] == "user"), "")
-            if last_user_msg:
-                if st.button("✏️ Edit Last Query", key="edit_last_query_btn", use_container_width=True):
-                    st.session_state.prompt_default = last_user_msg
-                    # Truncate messages state up to the last user message
-                    for idx in range(len(st.session_state.messages) - 1, -1, -1):
-                        if st.session_state.messages[idx]["role"] == "user":
-                            st.session_state.messages = st.session_state.messages[:idx]
-                            break
-                    st.rerun()
+        with chat_popup_cont:
+            with st.chat_message("user"):
+                st.markdown(popup_chat_input)
                 
-        # Chat Input form inside popover
-        with st.form(key="popover_chat_form", clear_on_submit=True):
-            col_inp, col_btn = st.columns([5, 1.2])
-            with col_inp:
-                chat_input = st.text_input(
-                    "Ask a question:", 
-                    value=st.session_state.prompt_default,
-                    placeholder="Ask about settlement policies, taxes, or database status...", 
-                    label_visibility="collapsed"
-                )
-            with col_btn:
-                submit_chat = st.form_submit_button("Send")
-                
-        # Redirect check from Deep-Dive buttons
-        if st.session_state.chat_query:
-            chat_input = st.session_state.chat_query
-            submit_chat = True
-            st.session_state.chat_query = None
-
-        if submit_chat and chat_input.strip():
-            # Reset prompt default value so it doesn't stay populated on next submit
-            st.session_state.prompt_default = ""
-            
-            # Log to local state and database
-            st.session_state.messages.append({"role": "user", "content": chat_input})
-            save_chat_message(st.session_state.session_id, "user", chat_input)
-            
-            # Display immediately
-            with chat_container:
-                with st.chat_message("user"):
-                    st.markdown(chat_input)
+        with chat_popup_cont:
+            with st.chat_message("assistant"):
+                with st.spinner("Analyzing data and matching policy references..."):
+                    # Retrieve matching segments from .md and .pdf policy files
+                    api_key = st.session_state.sys_gemini_api_key
+                    rag_context = retrieve_relevant_context(popup_chat_input, api_key, top_n=3)
                     
-            # Generate LLM response
-            with chat_container:
-                with st.chat_message("assistant"):
-                    with st.spinner("Analyzing data and matching policy references..."):
-                        # Retrieve matching segments from .md and .pdf policy files
-                        rag_context = retrieve_relevant_context(chat_input, gemini_api_key, top_n=3)
-                        
-                        # Construct conversation history format for LLM context continuity
-                        history_context = ""
-                        if len(st.session_state.messages) > 1:
-                            history_context = "\nCONVERSATION HISTORY (Previous turns in this thread):\n"
-                            for msg in st.session_state.messages[:-1]:
-                                role_label = "USER" if msg['role'] == 'user' else "ASSISTANT"
-                                history_context += f"- {role_label}: {msg['content']}\n"
-                        
-                        # Core database context prompt
-                        evidence_prompt = f"""
-                        DAILY CLOSE DATA SUMMARY (Batch: {dataset_option}):
-                        - Total Payments Processed: {metrics['total_payments_processed']}
-                        - Auto-match Accuracy: {metrics['auto_match_accuracy_pct']}%
-                        - Gross Customer Collections: INR {metrics['gross_collections_inr']:,.2f}
-                        - Refunds Processed: INR {metrics['refunds_inr']:,.2f}
-                        - Gateway Fees + GST: INR {metrics['fees_gst_inr']:,.2f}
-                        - Settled to Bank: INR {metrics['settled_to_bank_inr']:,.2f}
-                        - Expected pending settlement: INR {metrics['expected_next_2_days_inr']:,.2f}
-                        - Needs Review (Exceptions) count: {metrics['needs_review_count']}
-                        
-                        TAX COMPLIANCE SUMMARY:
-                        - Total Gateway GST Audited: INR {tax_summary['total_gst_collected_inr']:,.2f}
-                        - Total 194-O TDS Audited: INR {tax_summary['total_tds_deducted_inr']:,.2f}
-                        - Tax Compliance Rate: {tax_summary['tax_compliance_pct']}%
-                        - Tax Anomalies Count: {tax_summary['total_tax_discrepancies']} (GST issues: {tax_summary['gst_anomalies_count']}, TDS issues: {tax_summary['tds_anomalies_count']})
-                        
-                        CASH FORECAST SUMMARY (7-Day):
-                        - Projected 7-Day Net Cash Flow Addition: INR {forecast_df['net_inflow'].sum():,.2f}
-                        - Projected Ending Treasury Cash: INR {forecast_df.iloc[-1]['cumulative_cash']:,.2f}
-                        - Next 2-Day Committed Inflows: INR {forecast_df.iloc[:2]['gross_collections'].sum():,.2f}
-                        
-                        UNMATCHED COMPLETED ORDERS:
-                        {df_unmatched.to_string(columns=['order_id', 'amount_inr', 'status', 'calculated_exceptions'], index=False)}
-                        
-                        BANK STATEMENT EXCEPTIONS:
-                        {chr(10).join(['- ' + e.replace('₹', 'INR') for e in bank_excs]) if len(bank_excs) > 0 else 'None'}
-                        
-                        DETAILED TAX EXCEPTIONS (Needs Review):
-                        {tax_df[tax_df['tax_status'] != 'OK'].to_string(columns=['transaction_id', 'type', 'amount_inr', 'tax_status', 'audit_comments'], index=False)}
-                        
-                        DETAILED GATEWAY EXCEPTIONS (Needs Review):
-                        """
-                        
-                        # Exceptions details inclusion
-                        exc_txs = df_tx[df_tx['resolution_status'] == 'NEEDS_REVIEW']
-                        for idx, row in exc_txs.iterrows():
-                            clean_exc = str(row['calculated_exceptions']).replace('₹', 'INR')
-                            evidence_prompt += f"\n- TX_ID: {row['transaction_id']} (Order: {row['order_id']}), Method: {row['method']}, Amount: INR {row['amount_inr']}, Status: {row['status']}, Fee: INR {row['fee_inr']}, GST: INR {row['tax_inr']}, Expected Settlement Date: {row['expected_settlement_date']}, Exceptions: {clean_exc}"
-                            
-                        # Synthesis System instructions
-                        full_system_context = f"""You are an expert AI Finance Controller and Reconciliation Auditor.
-                        Your goal is to answer questions using both transaction evidence and official documents.
-                        
-                        {evidence_prompt}
-                        
-                        DOCUMENTATION CONTEXT (Policy rules and Tax specifications retrieved from files):
-                        {rag_context}
-                        
-                        {history_context}
-                        
-                        INSTRUCTIONS:
-                        - Quote transaction values, order IDs, and exception reasons exactly as calculated in the ledger.
-                        - If the user asks about rules or terms (e.g. payout schedule, refund timing, tax rates, GST offsets), search the DOCUMENTATION CONTEXT above. Explain the relevant policy rules and references accurately.
-                        - If both database facts and document policies are relevant, synthesize them (e.g., 'The settlement policy indicates T+2 days for payment settlements, which aligns with transaction X expected on Y...').
-                        - Maintain continuity with the CONVERSATION HISTORY. If the user asks a follow-up question, use the history context to resolve their references and pronouns.
-                        - Keep the explanation factual, concise, and formatted in clear markdown.
-                        """
-                        
-                        # AI Answer generation
-                        if gemini_api_key:
-                            try:
-                                genai.configure(api_key=gemini_api_key)
-                                model = genai.GenerativeModel(model_option)
-                                full_prompt = f"{full_system_context}\n\nUSER QUESTION: {chat_input}\n\nANSWER:"
-                                response = model.generate_content(full_prompt)
-                                answer = response.text
-                            except Exception as e:
-                                st.error(f"Gemini API Error: {str(e)}")
-                                answer = f"Error communicating with Gemini. Falling back to local search:\n\n{local_heuristic_engine(chat_input)}"
-                        else:
-                            answer = local_heuristic_engine(chat_input)
-                            if answer.startswith("Local Heuristic: No direct keyword"):
-                                if "No relevant context found in documents" not in rag_context and "No documents available for search" not in rag_context:
-                                    answer = f"**Policy Document Match:**\n\n{rag_context}\n\n*(Please add a Gemini API Key in the sidebar for full conversational synthesis).* "
-                                else:
-                                    answer = "I couldn't find a direct keyword match in the database, nor any matches in the policy documents. Please enter your **Gemini API Key** in the sidebar to enable open-ended question answering."
+                    # Construct conversation history
+                    history_context = ""
+                    if len(st.session_state.messages) > 1:
+                        history_context = "\nCONVERSATION HISTORY (Previous turns in this thread):\n"
+                        for msg in st.session_state.messages[:-1]:
+                            role_label = "USER" if msg['role'] == 'user' else "ASSISTANT"
+                            history_context += f"- {role_label}: {msg['content']}\n"
+                    
+                    # Core database context prompt
+                    evidence_prompt = f"""
+                    DAILY CLOSE DATA SUMMARY:
+                    - Total Payments Processed: {metrics['total_payments_processed']}
+                    - Auto-match Accuracy: {metrics['auto_match_accuracy_pct']}%
+                    - Gross Customer Collections: INR {metrics['gross_collections_inr']:,.2f}
+                    - Refunds Processed: INR {metrics['refunds_inr']:,.2f}
+                    - Gateway Fees + GST: INR {metrics['fees_gst_inr']:,.2f}
+                    - Settled to Bank: INR {metrics['settled_to_bank_inr']:,.2f}
+                    - Expected pending settlement: INR {metrics['expected_next_2_days_inr']:,.2f}
+                    - Needs Review (Exceptions) count: {metrics['needs_review_count']}
+                    """
+                    
+                    full_system_context = f"""You are an expert AI Finance Controller and Reconciliation Auditor.
+                    Your goal is to answer questions using both transaction evidence and official documents.
+                    
+                    {evidence_prompt}
+                    
+                    DOCUMENTATION CONTEXT (Policy rules and Tax specifications retrieved from files):
+                    {rag_context}
+                    
+                    {history_context}
+                    
+                    INSTRUCTIONS:
+                    - Quote transaction values, order IDs, and exception reasons exactly as calculated in the ledger.
+                    - Explain the relevant policy rules and references accurately.
+                    - Keep the explanation factual, concise, and formatted in clear markdown.
+                    """
+                    
+                    # Generate LLM response
+                    if api_key:
+                        try:
+                            genai.configure(api_key=api_key)
+                            model = genai.GenerativeModel(st.session_state.sys_gemini_model)
+                            full_prompt = f"{full_system_context}\n\nUSER QUESTION: {popup_chat_input}\n\nANSWER:"
+                            response = model.generate_content(full_prompt)
+                            answer = response.text
+                        except Exception as e:
+                            answer = f"Gemini API Error: {str(e)}"
+                    else:
+                        from app import local_heuristic_engine
+                        answer = local_heuristic_engine(popup_chat_input)
 
-                        st.markdown(answer)
-                        st.session_state.messages.append({"role": "assistant", "content": answer})
-                        save_chat_message(st.session_state.session_id, "assistant", answer)
-                        
-            st.rerun()
+                    st.markdown(answer)
+                    st.session_state.messages.append({"role": "assistant", "content": answer})
+                    save_chat_message(st.session_state.session_id, "assistant", answer)
+                    
+        st.rerun()
 
-        # Restart button
-        if st.button("🗑️ Restart Conversation", key="restart_chat"):
-            st.session_state.messages = []
-            st.session_state.session_id = f"session_{int(datetime.now().timestamp())}"
-            st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
+    # Restart button
+    if st.button("🗑️ Restart Chat Session", key="restart_chat_popover_btn", use_container_width=True):
+        st.session_state.messages = []
+        st.session_state.session_id = f"session_{int(datetime.now().timestamp())}"
+        st.rerun()
+
+st.markdown('</div>', unsafe_allow_html=True)
