@@ -3,20 +3,15 @@ import pandas as pd
 from datetime import datetime, timedelta
 
 def run_3way_reconciliation():
-    # Resolve data path dynamically relative to this file's location
-    src_dir = os.path.dirname(os.path.abspath(__file__))
-    base_dir = os.path.dirname(src_dir)
-    data_dir = os.path.join(base_dir, "data")
+    from src.database import load_financial_data, is_db_empty
+    from src.upload_pipeline import run_pipeline
     
-    # Paths
-    rp_path = os.path.join(data_dir, "razorpay_synthetic_buildathon_data.csv")
-    orders_path = os.path.join(data_dir, "internal_orders.csv")
-    bank_path = os.path.join(data_dir, "bank_statement.csv")
-    
-    # Load files
-    df_rp = pd.read_csv(rp_path)
-    df_orders = pd.read_csv(orders_path)
-    df_bank = pd.read_csv(bank_path)
+    # If the database is empty, auto-populate it using the ingestion pipeline
+    if is_db_empty():
+        run_pipeline(reset=True)
+        
+    # Load from SQLite / MySQL database
+    df_rp, df_orders, df_bank = load_financial_data()
     
     # Preprocess date formats
     df_orders['created_at_dt'] = pd.to_datetime(df_orders['created_at'], format="%d-%m-%Y %H:%M", errors='coerce')
