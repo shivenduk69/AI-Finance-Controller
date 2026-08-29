@@ -1151,7 +1151,8 @@ def export_data_for_rag(df_tx, df_orders, df_bank):
         orders_md += "| Order ID | Amount (INR) | Status | Created At | Customer Email |\n"
         orders_md += "|---|---|---|---|---|\n"
         for _, row in df_orders.iterrows():
-            orders_md += f"| {row['order_id']} | {row['amount_inr']:.2f} | {row['status']} | {row['created_at']} | {row['customer_email']} |\n"
+            created_at_val = row['created_at'] if 'created_at' in df_orders.columns else 'N/A'
+            orders_md += f"| {row['order_id']} | {row['amount_inr']:.2f} | {row['status']} | {created_at_val} | {row['customer_email']} |\n"
             
         with open(orders_path, "w", encoding="utf-8") as f:
             f.write(orders_md)
@@ -1162,7 +1163,8 @@ def export_data_for_rag(df_tx, df_orders, df_bank):
         txs_md += "| Transaction ID | Order ID | Type | Status | Method | Amount (INR) | Fee (INR) | GST (INR) | Settled (INR) | Expected Settlement Date | Timestamp | Resolution Status |\n"
         txs_md += "|---|---|---|---|---|---|---|---|---|---|---|---|\n"
         for _, row in df_tx.iterrows():
-            txs_md += f"| {row['transaction_id']} | {row['order_id']} | {row['type']} | {row['status']} | {row['method']} | {row['amount_inr']:.2f} | {row['fee_inr']:.2f} | {row['tax_inr']:.2f} | {row['settled_amount_inr']:.2f} | {row['expected_settlement_date']} | {row['timestamp']} | {row['resolution_status']} |\n"
+            timestamp_val = row['timestamp'] if 'timestamp' in df_tx.columns else row.get('expected_settlement_date', 'N/A')
+            txs_md += f"| {row['transaction_id']} | {row['order_id']} | {row['type']} | {row['status']} | {row['method']} | {row['amount_inr']:.2f} | {row['fee_inr']:.2f} | {row['tax_inr']:.2f} | {row['settled_amount_inr']:.2f} | {row['expected_settlement_date']} | {timestamp_val} | {row['resolution_status']} |\n"
             
         with open(txs_path, "w", encoding="utf-8") as f:
             f.write(txs_md)
@@ -1184,6 +1186,8 @@ def export_data_for_rag(df_tx, df_orders, df_bank):
         from src.rag_engine import build_document_index
         build_document_index(st.session_state.sys_gemini_api_key, force_reindex=True)
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"Error exporting data for RAG: {str(e)}")
 
 # ----------------------------------------------------
