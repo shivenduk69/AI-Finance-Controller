@@ -1886,42 +1886,7 @@ if user:
 if "active_batch" not in st.session_state:
     st.session_state.active_batch = "Razorpay Synthetic Batch (60 records)"
 
-if st.session_state.page == "dashboard":
-    col_header_left, col_header_right = st.columns([2.2, 1.8])
-    with col_header_left:
-        st.markdown(clean_html(f"""
-        <form action="" method="get" target="_self" style="width: 100%; margin: 0; padding: 0;">
-            <input type="hidden" name="page" value="{st.session_state.page}">
-            <div class="header-search-container">
-                <span style="font-size: 1rem; margin-right: 8px; color: #6B7C93;">🔍</span>
-                <input type="text" name="search" placeholder="Search transaction IDs, orders, or settlement credits..." style="border: none; outline: none; width: 100%; font-size: 0.85rem; font-weight: 500; color: #172B4D; font-family: 'Inter', sans-serif; background: transparent;">
-            </div>
-        </form>
-        """), unsafe_allow_html=True)
-
-    with col_header_right:
-        col_sub_icons, col_sub_sel = st.columns([1, 2])
-        with col_sub_icons:
-            st.markdown(clean_html("""
-            <div class="header-icons-wrapper">
-                <a href="?notify=true" target="_self" class="header-icon" title="Notifications" style="text-decoration: none;">🔔</a>
-                <a href="?page=settings" target="_self" class="header-icon" title="Help Centre" style="text-decoration: none;">❓</a>
-                <a href="?page=settings" target="_self" class="header-avatar" title="Shivendu K (Admin)" style="text-decoration: none; color: white;">FK</a>
-            </div>
-            """), unsafe_allow_html=True)
-        with col_sub_sel:
-            # Dynamic interactive batch selector
-            dataset_option = st.selectbox(
-                "Reconciliation Batch Selection",
-                ["Razorpay Synthetic Batch (60 records)", "Example August 25 Daily Close (80 records)"],
-                label_visibility="collapsed",
-                key="header_batch_selector"
-            )
-            st.session_state.active_batch = dataset_option
-
-    st.markdown('<div class="header-divider"></div>', unsafe_allow_html=True)
-else:
-    dataset_option = st.session_state.active_batch
+dataset_option = st.session_state.active_batch
 
 # ----------------------------------------------------
 # CORE ENGINE DATA RETRIEVAL
@@ -2022,240 +1987,374 @@ tax_summary, tax_df = run_tax_audit(df_tx, tds_config=st.session_state.sys_tds_c
 # ----------------------------------------------------
 # PAGE 1: MERCHANT DASHBOARD
 # ----------------------------------------------------
+# ----------------------------------------------------
+# PAGE 1: MERCHANT DASHBOARD
+# ----------------------------------------------------
 if st.session_state.page == "dashboard":
-    st.markdown("<h2 style='margin-bottom: 2px;'>Hello, Welcome to Finance Controller</h2>", unsafe_allow_html=True)
+    # Context resolution
+    user = st.session_state.user or {}
+    merchant_name = (user.get('merchant_id') or current_merchant_id or 'Flipkart').capitalize()
+    store_code = (user.get('store_id') or current_store_id or 'fk_delhi').split('_')[-1].capitalize()
+    store_title = f"{merchant_name} {store_code} Store"
+    acc_val = metrics.get('auto_match_accuracy_pct', 83.3)
     
-    # Subtitle with metadata & Refresh Action
-    col_sub_meta, col_sub_act = st.columns([3, 1])
-    with col_sub_meta:
-        st.markdown(f"""
-        <div style="font-size: 0.95rem; color: #6B7C93; margin-bottom: 20px;">
-            Active Batch: <strong style="color: #172B4D;">{dataset_option.split('(')[0].strip()}</strong> 
-            • <strong style="color: #1F2A37;">{metrics['total_transactions']} transactions</strong> 
-            • Last synced: 2 min ago
-        </div>
-        """, unsafe_allow_html=True)
-    with col_sub_act:
-        if st.button("🔄 Refresh Data Feed", key="dashboard_refresh_btn", use_container_width=True):
-            st.rerun()
+    # 1. TOP COMPACT HEADER
+    col_head_left, col_head_right = st.columns([2.2, 1.8])
+    with col_head_left:
+        st.markdown(f"<h2 style='font-size: 22px; font-weight: 800; color: #172B4D; font-family: \"Outfit\", sans-serif; margin: 0 0 2px 0;'>Welcome back, {store_title} 👋</h2>", unsafe_allow_html=True)
+        st.markdown("<p style='font-size: 13.5px; color: #6B7C93; margin: 0;'>Here's an overview of your financial operations.</p>", unsafe_allow_html=True)
+    with col_head_right:
+        c_dt, c_ref, c_exp = st.columns([1.6, 0.4, 1.4])
+        with c_dt:
+            st.selectbox("Date Range", ["May 22 – May 28, 2025", "Last 7 Days", "Last 30 Days", "This Month"], label_visibility="collapsed", key="merchant_date_range_picker")
+        with c_ref:
+            if st.button("⟳", key="merchant_refresh_top_btn", help="Refresh Data"):
+                st.rerun()
+        with c_exp:
+            st.download_button(
+                "⤓ Export Report",
+                data=df_tx.to_csv(index=False),
+                file_name=f"{merchant_name.lower()}_{store_code.lower()}_financial_report.csv",
+                mime="text/csv",
+                key="merchant_export_report_btn"
+            )
             
-    # KPI Grid (5 Columns)
+    # Sub-header sync status line
+    col_syn_left, col_syn_right = st.columns([3, 1])
+    with col_syn_right:
+        st.markdown("<div style='text-align: right; margin-top: 4px; margin-bottom: 12px;'><a href='?page=dashboard' target='_self' style='font-size: 11.5px; font-weight: 600; color: #2563EB; text-decoration: none;'>⟳ Refresh Data Feed</a></div>", unsafe_allow_html=True)
+        
+    # 2. 5 KPI METRIC CARDS ROW
     k1, k2, k3, k4, k5 = st.columns(5)
     with k1:
-        st.markdown(f"""
-        <div class="kpi-card">
-            <div class="kpi-title">Transactions</div>
-            <div class="kpi-value">{metrics['total_payments_processed']}</div>
-            <div class="kpi-desc"><span style="color: var(--primary);">●</span> Batch volume</div>
+        tx_count = metrics.get('total_payments_processed', len(df_tx))
+        st.markdown(clean_html(f"""
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); height: 110px; display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <div style="width: 22px; height: 22px; border-radius: 5px; background-color: #EFF6FF; color: #3B82F6; display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0;">📦</div>
+                <div style="font-size: 9.5px; font-weight: 700; color: #6B7C93; text-transform: uppercase; letter-spacing: 0.2px;">TRANSACTIONS</div>
+            </div>
+            <div style="font-size: 20px; font-weight: 800; color: #172B4D; font-family: 'Outfit', sans-serif; line-height: 1.1; margin: 2px 0;">{tx_count}</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: #6B7C93; border-top: 1px solid #F8FAFC; padding-top: 4px;">
+                <span style="white-space: nowrap;">● Batch volume</span>
+                <span style="color: #10B981; font-weight: 600; white-space: nowrap;">↗ 14.3% vs last week</span>
+            </div>
         </div>
-        """, unsafe_allow_html=True)
+        """), unsafe_allow_html=True)
     with k2:
-        # Reconciled is the primary rate card (Razorpay blue background card)
-        acc_val = metrics['auto_match_accuracy_pct']
-        st.markdown(f"""
-        <div class="kpi-card primary-kpi">
-            <div class="kpi-title" style="color: rgba(255,255,255,0.75);">Reconciled</div>
-            <div class="kpi-value" style="color: #FFFFFF;">{metrics['auto_resolved_count']}</div>
-            <div class="kpi-desc" style="color: rgba(255,255,255,0.85);">{acc_val}% solved rate</div>
+        rec_count = metrics.get('auto_resolved_count', len(df_tx[df_tx['resolution_status'] == 'AUTO_RESOLVED']))
+        st.markdown(clean_html(f"""
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); height: 110px; display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <div style="width: 22px; height: 22px; border-radius: 5px; background-color: #ECFDF5; color: #10B981; display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0;">📋</div>
+                <div style="font-size: 9.5px; font-weight: 700; color: #6B7C93; text-transform: uppercase; letter-spacing: 0.2px;">RECONCILED</div>
+            </div>
+            <div style="font-size: 20px; font-weight: 800; color: #172B4D; font-family: 'Outfit', sans-serif; line-height: 1.1; margin: 2px 0;">{rec_count}</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: #6B7C93; border-top: 1px solid #F8FAFC; padding-top: 4px;">
+                <span style="white-space: nowrap;">● {acc_val}% solved rate</span>
+                <span style="color: #10B981; font-weight: 600; white-space: nowrap;">↗ 8.6% vs last week</span>
+            </div>
         </div>
-        """, unsafe_allow_html=True)
+        """), unsafe_allow_html=True)
     with k3:
-        st.markdown(f"""
-        <div class="kpi-card">
-            <div class="kpi-title">Exceptions</div>
-            <div class="kpi-value" style="color: var(--error);">{metrics['needs_review_count']}</div>
-            <div class="kpi-desc"><span style="color: var(--error);">⚠</span> Needs review</div>
+        exc_count = metrics.get('needs_review_count', len(df_tx[df_tx['resolution_status'] == 'NEEDS_REVIEW']))
+        st.markdown(clean_html(f"""
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); height: 110px; display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <div style="width: 22px; height: 22px; border-radius: 5px; background-color: #FEE2E2; color: #EF4444; display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0;">⚠️</div>
+                <div style="font-size: 9.5px; font-weight: 700; color: #6B7C93; text-transform: uppercase; letter-spacing: 0.2px;">EXCEPTIONS</div>
+            </div>
+            <div style="font-size: 20px; font-weight: 800; color: #EF4444; font-family: 'Outfit', sans-serif; line-height: 1.1; margin: 2px 0;">{exc_count}</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: #6B7C93; border-top: 1px solid #F8FAFC; padding-top: 4px;">
+                <span style="white-space: nowrap;">⚠ Needs review</span>
+                <span style="color: #EF4444; font-weight: 600; white-space: nowrap;">↘ 33.3% vs last week</span>
+            </div>
         </div>
-        """, unsafe_allow_html=True)
+        """), unsafe_allow_html=True)
     with k4:
-        st.markdown(f"""
-        <div class="kpi-card">
-            <div class="kpi-title">Settled to Bank</div>
-            <div class="kpi-value">₹{metrics['settled_to_bank_inr']:,.2f}</div>
-            <div class="kpi-desc"><span style="color: var(--success);">✓</span> Verified Credit</div>
+        settled_bank = metrics.get('settled_to_bank_inr', df_bank['amount_inr'].sum() if 'amount_inr' in df_bank else 18308.44)
+        st.markdown(clean_html(f"""
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); height: 110px; display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <div style="width: 22px; height: 22px; border-radius: 5px; background-color: #F3E8FF; color: #7C3AED; display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0;">🏦</div>
+                <div style="font-size: 9.5px; font-weight: 700; color: #6B7C93; text-transform: uppercase; letter-spacing: 0.2px;">SETTLED TO BANK</div>
+            </div>
+            <div style="font-size: 18px; font-weight: 800; color: #172B4D; font-family: 'Outfit', sans-serif; line-height: 1.1; margin: 2px 0;">₹{settled_bank:,.2f}</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: #6B7C93; border-top: 1px solid #F8FAFC; padding-top: 4px;">
+                <span style="white-space: nowrap;">✓ Verified Credit</span>
+                <span style="color: #10B981; font-weight: 600; white-space: nowrap;">↗ 12.7% vs last week</span>
+            </div>
         </div>
-        """, unsafe_allow_html=True)
+        """), unsafe_allow_html=True)
     with k5:
-        st.markdown(f"""
-        <div class="kpi-card">
-            <div class="kpi-title">Expected Settlement</div>
-            <div class="kpi-value">₹{metrics['expected_next_2_days_inr']:,.2f}</div>
-            <div class="kpi-desc"><span style="color: var(--warning);">⏳</span> T+2 Pending</div>
+        expected_settle = metrics.get('expected_next_2_days_inr', 7515.77)
+        st.markdown(clean_html(f"""
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); height: 110px; display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <div style="width: 22px; height: 22px; border-radius: 5px; background-color: #FEF3C7; color: #D97706; display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0;">⏳</div>
+                <div style="font-size: 9.5px; font-weight: 700; color: #6B7C93; text-transform: uppercase; letter-spacing: 0.2px;">EXPECTED SETTLEMENT</div>
+            </div>
+            <div style="font-size: 18px; font-weight: 800; color: #172B4D; font-family: 'Outfit', sans-serif; line-height: 1.1; margin: 2px 0;">₹{expected_settle:,.2f}</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: #6B7C93; border-top: 1px solid #F8FAFC; padding-top: 4px;">
+                <span style="white-space: nowrap;">⏳ T+2 Pending</span>
+                <span style="color: #10B981; font-weight: 600; white-space: nowrap;">↗ 5.1% vs last week</span>
+            </div>
         </div>
-        """, unsafe_allow_html=True)
+        """), unsafe_allow_html=True)
         
-    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("<div style='margin-top: 16px;'></div>", unsafe_allow_html=True)
     
-    # Reconciliation Health layout
-    col_hl, col_hr = st.columns([1.1, 0.9])
+    # 3. PRIMARY ANALYTICS ROW (2 COLUMNS)
+    col_a1, col_a2 = st.columns([1.1, 0.9])
     
-    with col_hl:
-        st.markdown("### RECONCILIATION HEALTH")
-        st.markdown(f"""
-        <div class="card-panel" style="min-height: 260px;">
-            <div style="font-size: 1.6rem; font-weight: 700; color: var(--navy); font-family: 'Outfit', sans-serif;">{acc_val}%</div>
-            <div style="font-size: 0.85rem; color: var(--text-sec); font-weight: 600; margin-bottom: 12px;">
-                {metrics['auto_resolved_count']} of {metrics['total_transactions']} transactions reconciled
-            </div>
-            <div class="custom-progress-container">
-                <div class="custom-progress-bar" style="width: {acc_val}%;"></div>
-            </div>
-            <div class="health-checklist">
-                <div class="checklist-item success">
-                    <span class="badge-icon">✓</span>
-                    <span>Gateway matched ({metrics['total_payments_processed']}/{metrics['total_payments_processed']} payment records verified)</span>
-                </div>
-                <div class="checklist-item success">
-                    <span class="badge-icon">✓</span>
-                    <span>Bank statement verified (settlement entries match statement deposits)</span>
-                </div>
-                <div class="checklist-item warning">
-                    <span class="badge-icon">⚠</span>
-                    <span>{metrics['needs_review_count']} transactions require manual investigation</span>
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-    with col_hr:
-        st.markdown("### RECONCILIATION TREND")
-        # Reconciliation health Plotly Stacked Bar Chart
-        fig = go.Figure()
-        # Grouped bar data
-        fig.add_trace(go.Bar(
-            x=['Aug 20', 'Aug 21', 'Aug 22', 'Aug 23', 'Aug 24', 'Aug 25'],
-            y=[15, 12, 10, 5, 1, 0],
-            name='Reconciled',
-            marker_color='#0F4C75'
-        ))
-        fig.add_trace(go.Bar(
-            x=['Aug 20', 'Aug 21', 'Aug 22', 'Aug 23', 'Aug 24', 'Aug 25'],
-            y=[0, 1, 2, 5, 8, 2],
-            name='Exceptions',
-            marker_color='#F59E0B'
-        ))
-        fig.update_layout(
-            barmode='stack',
-            height=260,
-            margin=dict(l=10, r=10, t=10, b=10),
-            template='plotly_white',
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-            xaxis=dict(showgrid=False),
-            yaxis=dict(gridcolor='#F1F5F9')
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
-    # Financial flow overview
-    st.markdown("### FINANCIAL FLOW OVERVIEW")
-    st.markdown(clean_html("""
-    <div class="flow-container">
-        <div class="flow-step">
-            <div class="step-label">Customer Collections</div>
-            <div class="step-value">₹72,392.00</div>
-        </div>
-        <div class="flow-arrow">→</div>
-        <div class="flow-step">
-            <div class="step-label">Refunds</div>
-            <div class="step-value">-₹8,500.00</div>
-        </div>
-        <div class="flow-arrow">→</div>
-        <div class="flow-step">
-            <div class="step-label">Gateway Fees & GST</div>
-            <div class="step-value">-₹2,341.00</div>
-        </div>
-        <div class="flow-arrow">→</div>
-        <div class="flow-step">
-            <div class="step-label">Net Collections</div>
-            <div class="step-value">₹61,551.00</div>
-        </div>
-        <div class="flow-arrow">→</div>
-        <div class="flow-step">
-            <div class="step-label">Expected Settlement</div>
-            <div class="step-value">₹61,551.00</div>
-        </div>
-        <div class="flow-arrow">→</div>
-        <div class="flow-step">
-            <div class="step-label" style="color: var(--success);">Bank Settlement</div>
-            <div class="step-value" style="color: var(--success); font-weight: 800;">₹61,551.00</div>
-        </div>
-    </div>
-    """), unsafe_allow_html=True)
-    
-    # AI insights card
-    st.markdown("### AI INSIGHTS")
-    st.markdown(f"""
-    <div class="ai-insights-card">
-        <div class="ai-insights-header">
-            <span class="ai-spark-icon">✦</span>
-            <h3>AI Finance Insights</h3>
-        </div>
-        <div class="ai-insights-content">
-            <p style="font-size: 13.5px; font-weight: 500; margin: 0 0 10px 0;">Today's batch reconciliation is <strong>{acc_val}% complete</strong>. The system has flagged <strong>{metrics['needs_review_count']} transactions</strong> requiring audit verification.</p>
-            <div class="ai-issue-summary">
-                <div class="issue-item"><strong>Primary Driver:</strong> Settlement discrepancies hit Aug 22 batches.</div>
-                <div class="issue-item"><strong>Potential Impact:</strong> <span class="text-error">₹8,420.00</span> in bank credits requires explanation.</div>
-                <div class="issue-item"><strong>Recommended Action:</strong> Run a bank credit audit and check Razorpay payouts.</div>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    col_act_left, col_act_right = st.columns([1, 3])
-    with col_act_left:
-        if st.button("Review Exceptions Queue", key="ai_redirect_exceptions_btn", use_container_width=True):
-            st.session_state.page = "exceptions"
-            st.rerun()
+    # Column 1: Reconciliation Health
+    with col_a1:
+        with st.container(border=True):
+            st.markdown(f"""
+            <div style="font-size: 11px; font-weight: 700; color: #172B4D; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">RECONCILIATION HEALTH</div>
+            <div style="font-size: 24px; font-weight: 800; color: #172B4D; font-family: 'Outfit', sans-serif; margin-bottom: 2px;">{acc_val}%</div>
+            <div style="font-size: 12px; color: #6B7C93; margin-bottom: 12px;">{rec_count} of {metrics.get('total_transactions', len(df_tx))} transactions reconciled</div>
             
-    st.markdown("<br>", unsafe_allow_html=True)
+            <div style="background: #E2E8F0; border-radius: 4px; height: 8px; width: 100%; overflow: hidden; margin-bottom: 16px;">
+                <div style="background: #0F4C75; height: 100%; width: {acc_val}%; border-radius: 4px;"></div>
+            </div>
+            
+            <div style="display: flex; flex-direction: column; gap: 8px; font-size: 12px; color: #172B4D;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="color: #10B981; font-weight: 800;">✓</span>
+                    <span><strong>Gateway matched</strong> ({metrics.get('total_payments_processed', len(df_tx))}/{metrics.get('total_payments_processed', len(df_tx))} payment records verified)</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="color: #10B981; font-weight: 800;">✓</span>
+                    <span><strong>Bank statement verified</strong> (settlement entries match statement deposits)</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="color: #F59E0B; font-weight: 800;">⚠</span>
+                    <span><strong>{exc_count} transactions</strong> require manual investigation</span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+    # Column 2: Reconciliation Trend
+    with col_a2:
+        with st.container(border=True):
+            st.markdown("""
+            <div style="font-size: 11px; font-weight: 700; color: #172B4D; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">RECONCILIATION TREND</div>
+            """, unsafe_allow_html=True)
+            
+            fig_trend = go.Figure()
+            fig_trend.add_trace(go.Bar(
+                x=['May 22', 'May 23', 'May 24', 'May 25', 'May 26', 'May 27', 'May 28'],
+                y=[15, 12, 10, 5, 2, 0, 0],
+                name='Reconciled',
+                marker_color='#0F4C75'
+            ))
+            fig_trend.add_trace(go.Bar(
+                x=['May 22', 'May 23', 'May 24', 'May 25', 'May 26', 'May 27', 'May 28'],
+                y=[0, 1, 2, 5, 5, 2, 0],
+                name='Exceptions',
+                marker_color='#F59E0B'
+            ))
+            fig_trend.update_layout(
+                barmode='stack',
+                height=180,
+                margin=dict(l=10, r=10, t=10, b=10),
+                template='plotly_white',
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=10)),
+                xaxis=dict(showgrid=False, tickfont=dict(size=10)),
+                yaxis=dict(gridcolor='#F1F5F9', tickfont=dict(size=10))
+            )
+            st.plotly_chart(fig_trend, use_container_width=True, config={'displayModeBar': False})
+            
+    st.markdown("<div style='margin-top: 16px;'></div>", unsafe_allow_html=True)
     
-    # Daily Close Workflow Section
-    st.markdown("### DAILY CLOSE WORKFLOW")
-    exceptions_unresolved = metrics['needs_review_count']
-    if exceptions_unresolved > 0:
-        st.markdown(f"""
-        <div style="background-color: #FFFFFF; border: 1px solid var(--border); border-left: 4px solid var(--warning); padding: 20px; border-radius: 6px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
-            <h4 style="color: var(--warning); margin: 0 0 8px 0; font-size: 15px;">DAILY CLOSE STATUS: PENDING ACTIONS</h4>
-            <div class="health-checklist" style="margin-top: 10px; margin-bottom: 15px;">
-                <div class="checklist-item success"><span class="badge-icon">✓</span> Gateway reconciliation complete (60/60 matched)</div>
-                <div class="checklist-item success"><span class="badge-icon">✓</span> Bank settlement deposits verified</div>
-                <div class="checklist-item success"><span class="badge-icon">✓</span> Gateway processing fees validated</div>
-                <div class="checklist-item error"><span class="badge-icon">⚠</span> {exceptions_unresolved} exceptions require manual attention</div>
-                <div class="checklist-item success"><span class="badge-icon">✓</span> Tax compliance & TDS checks completed</div>
+    # 4. SECONDARY OPERATIONAL TABLES ROW (3 COLUMNS)
+    col_t1, col_t2, col_t3 = st.columns(3)
+    
+    # Table 1: Recent Exceptions
+    with col_t1:
+        st.markdown(clean_html("""
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); height: 210px; box-sizing: border-box; overflow-x: auto; width: 100%;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <h3 style="font-size: 13px; font-weight: 700; color: #172B4D; font-family: 'Outfit', sans-serif; margin: 0;">Recent Exceptions</h3>
+                <a href="?page=exceptions" target="_self" style="font-size: 11px; font-weight: 600; color: #2563EB; text-decoration: none;">View All</a>
             </div>
-            <p style="margin: 0 0 15px 0; font-size: 13.5px; font-weight: 500; color: var(--navy);">
-                <strong>{exceptions_unresolved} unresolved exceptions</strong> are preventing batch closure. You must audit and resolve these exceptions before closing today's daily ledger.
-            </p>
+            <table style="width: 100%; border-collapse: collapse; font-family: 'Inter', sans-serif; font-size: 11px;">
+                <thead>
+                    <tr>
+                        <th style="padding: 5px 4px; font-size: 9px; font-weight: 700; color: #6B7C93; text-transform: uppercase; border-bottom: 1px solid #E2E8F0; text-align: left;">Exception ID</th>
+                        <th style="padding: 5px 4px; font-size: 9px; font-weight: 700; color: #6B7C93; text-transform: uppercase; border-bottom: 1px solid #E2E8F0; text-align: left;">Type</th>
+                        <th style="padding: 5px 4px; font-size: 9px; font-weight: 700; color: #6B7C93; text-transform: uppercase; border-bottom: 1px solid #E2E8F0; text-align: left;">Amount</th>
+                        <th style="padding: 5px 4px; font-size: 9px; font-weight: 700; color: #6B7C93; text-transform: uppercase; border-bottom: 1px solid #E2E8F0; text-align: left;">Age</th>
+                        <th style="padding: 5px 4px; font-size: 9px; font-weight: 700; color: #6B7C93; text-transform: uppercase; border-bottom: 1px solid #E2E8F0; text-align: left;">Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC;"><strong style="color: #2563EB;">EXC-10245</strong></td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC;">Amount Mismatch</td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; font-weight: 600;">₹8,420.00</td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; color: #6B7C93;">2h</td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC;"><span style="background: #FEE2E2; color: #EF4444; border: 1px solid #FECACA; padding: 1px 6px; border-radius: 4px; font-size: 9.5px; font-weight: 700;">Open</span></td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px 4px; border-bottom: none;"><strong style="color: #2563EB;">EXC-10242</strong></td>
+                        <td style="padding: 6px 4px; border-bottom: none;">Missing Bank Credit</td>
+                        <td style="padding: 6px 4px; border-bottom: none; font-weight: 600;">₹6,551.00</td>
+                        <td style="padding: 6px 4px; border-bottom: none; color: #6B7C93;">6h</td>
+                        <td style="padding: 6px 4px; border-bottom: none;"><span style="background: #FEE2E2; color: #EF4444; border: 1px solid #FECACA; padding: 1px 6px; border-radius: 4px; font-size: 9.5px; font-weight: 700;">Open</span></td>
+                    </tr>
+                </tbody>
+            </table>
         </div>
-        """, unsafe_allow_html=True)
-        col_c1, col_csp = st.columns([1.2, 4.8])
-        with col_c1:
-            if st.button("Review Exceptions Queue", key="close_review_exceptions_btn", use_container_width=True):
-                st.session_state.page = "exceptions"
-                st.rerun()
-    else:
-        st.markdown(f"""
-        <div style="background-color: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.2); border-left: 4px solid var(--success); padding: 20px; border-radius: 6px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
-            <h4 style="color: var(--success); margin: 0 0 8px 0; font-size: 15px;">✓ DAILY CLOSE READY</h4>
-            <div class="health-checklist" style="margin-top: 10px; margin-bottom: 15px;">
-                <div class="checklist-item success"><span class="badge-icon">✓</span> Gateway reconciliation complete (all payments matched)</div>
-                <div class="checklist-item success"><span class="badge-icon">✓</span> Bank settlement deposits verified</div>
-                <div class="checklist-item success"><span class="badge-icon">✓</span> Gateway processing fees validated</div>
-                <div class="checklist-item success"><span class="badge-icon">✓</span> All exceptions successfully resolved</div>
-                <div class="checklist-item success"><span class="badge-icon">✓</span> Tax compliance & GST audits passed</div>
+        """), unsafe_allow_html=True)
+        
+    # Table 2: Recent Settlements
+    with col_t2:
+        st.markdown(clean_html("""
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); height: 210px; box-sizing: border-box; overflow-x: auto; width: 100%;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <h3 style="font-size: 13px; font-weight: 700; color: #172B4D; font-family: 'Outfit', sans-serif; margin: 0;">Recent Settlements</h3>
+                <a href="?page=settlements" target="_self" style="font-size: 11px; font-weight: 600; color: #2563EB; text-decoration: none;">View All</a>
             </div>
-            <p style="margin: 0 0 15px 0; font-size: 13.5px; font-weight: 500; color: var(--navy);">
-                All accounts are fully reconciled. Today's ledger batch is balanced and prepared for official closing.
-            </p>
+            <table style="width: 100%; border-collapse: collapse; font-family: 'Inter', sans-serif; font-size: 11px;">
+                <thead>
+                    <tr>
+                        <th style="padding: 5px 4px; font-size: 9px; font-weight: 700; color: #6B7C93; text-transform: uppercase; border-bottom: 1px solid #E2E8F0; text-align: left;">Settlement ID</th>
+                        <th style="padding: 5px 4px; font-size: 9px; font-weight: 700; color: #6B7C93; text-transform: uppercase; border-bottom: 1px solid #E2E8F0; text-align: left;">Date</th>
+                        <th style="padding: 5px 4px; font-size: 9px; font-weight: 700; color: #6B7C93; text-transform: uppercase; border-bottom: 1px solid #E2E8F0; text-align: left;">Amount</th>
+                        <th style="padding: 5px 4px; font-size: 9px; font-weight: 700; color: #6B7C93; text-transform: uppercase; border-bottom: 1px solid #E2E8F0; text-align: left;">Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC;"><strong style="color: #172B4D;">SET-5005</strong></td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; color: #6B7C93;">May 28, 2025</td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; font-weight: 600;">₹18,308.44</td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC;"><span style="background: #ECFDF5; color: #10B981; border: 1px solid #A7F3D0; padding: 1px 6px; border-radius: 4px; font-size: 9.5px; font-weight: 700;">Settled</span></td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC;"><strong style="color: #172B4D;">SET-5004</strong></td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; color: #6B7C93;">May 27, 2025</td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; font-weight: 600;">₹16,215.00</td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC;"><span style="background: #ECFDF5; color: #10B981; border: 1px solid #A7F3D0; padding: 1px 6px; border-radius: 4px; font-size: 9.5px; font-weight: 700;">Settled</span></td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px 4px; border-bottom: none;"><strong style="color: #172B4D;">SET-5003</strong></td>
+                        <td style="padding: 6px 4px; border-bottom: none; color: #6B7C93;">May 26, 2025</td>
+                        <td style="padding: 6px 4px; border-bottom: none; font-weight: 600;">₹14,902.33</td>
+                        <td style="padding: 6px 4px; border-bottom: none;"><span style="background: #ECFDF5; color: #10B981; border: 1px solid #A7F3D0; padding: 1px 6px; border-radius: 4px; font-size: 9.5px; font-weight: 700;">Settled</span></td>
+                    </tr>
+                </tbody>
+            </table>
         </div>
-        """, unsafe_allow_html=True)
-        col_c1, col_c2, col_csp = st.columns([1.2, 1, 3.8])
-        with col_c1:
-            if st.button("Generate Close Report", key="close_gen_report_btn", use_container_width=True):
-                st.success("Daily Close Summary Report generated and saved to exports.")
-        with col_c2:
-            if st.button("Close Ledger Batch", key="close_batch_btn", use_container_width=True):
-                st.balloons()
-                st.success("Batch successfully closed and archived in general ledger.")
+        """), unsafe_allow_html=True)
+        
+    # Table 3: Recent Payouts
+    with col_t3:
+        st.markdown(clean_html("""
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); height: 210px; box-sizing: border-box; overflow-x: auto; width: 100%;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <h3 style="font-size: 13px; font-weight: 700; color: #172B4D; font-family: 'Outfit', sans-serif; margin: 0;">Recent Payouts</h3>
+                <a href="?page=payouts" target="_self" style="font-size: 11px; font-weight: 600; color: #2563EB; text-decoration: none;">View All</a>
+            </div>
+            <table style="width: 100%; border-collapse: collapse; font-family: 'Inter', sans-serif; font-size: 11px;">
+                <thead>
+                    <tr>
+                        <th style="padding: 5px 4px; font-size: 9px; font-weight: 700; color: #6B7C93; text-transform: uppercase; border-bottom: 1px solid #E2E8F0; text-align: left;">Payout ID</th>
+                        <th style="padding: 5px 4px; font-size: 9px; font-weight: 700; color: #6B7C93; text-transform: uppercase; border-bottom: 1px solid #E2E8F0; text-align: left;">Date</th>
+                        <th style="padding: 5px 4px; font-size: 9px; font-weight: 700; color: #6B7C93; text-transform: uppercase; border-bottom: 1px solid #E2E8F0; text-align: left;">Amount</th>
+                        <th style="padding: 5px 4px; font-size: 9px; font-weight: 700; color: #6B7C93; text-transform: uppercase; border-bottom: 1px solid #E2E8F0; text-align: left;">Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC;"><strong style="color: #172B4D;">PAYOUT-8421</strong></td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; color: #6B7C93;">May 28, 2025</td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; font-weight: 600;">₹7,515.77</td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC;"><span style="background: #FEF3C7; color: #D97706; border: 1px solid #FDE68A; padding: 1px 6px; border-radius: 4px; font-size: 9.5px; font-weight: 700;">Scheduled</span></td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC;"><strong style="color: #172B4D;">PAYOUT-8420</strong></td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; color: #6B7C93;">May 27, 2025</td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; font-weight: 600;">₹7,215.50</td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC;"><span style="background: #FEF3C7; color: #D97706; border: 1px solid #FDE68A; padding: 1px 6px; border-radius: 4px; font-size: 9.5px; font-weight: 700;">Scheduled</span></td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px 4px; border-bottom: none;"><strong style="color: #172B4D;">PAYOUT-8419</strong></td>
+                        <td style="padding: 6px 4px; border-bottom: none; color: #6B7C93;">May 26, 2025</td>
+                        <td style="padding: 6px 4px; border-bottom: none; font-weight: 600;">₹6,800.20</td>
+                        <td style="padding: 6px 4px; border-bottom: none;"><span style="background: #ECFDF5; color: #10B981; border: 1px solid #A7F3D0; padding: 1px 6px; border-radius: 4px; font-size: 9.5px; font-weight: 700;">Completed</span></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        """), unsafe_allow_html=True)
+        
+    st.markdown("<div style='margin-top: 16px;'></div>", unsafe_allow_html=True)
+    
+    # 5. BOTTOM 2-COLUMN OPERATIONAL SECTION
+    col_b1, col_b2 = st.columns(2)
+    
+    # Bottom Left: AI Finance Insights
+    with col_b1:
+        with st.container(border=True):
+            b_head_l, b_head_r = st.columns([2.2, 1.3])
+            with b_head_l:
+                st.markdown("""
+                <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px;">
+                    <span style="color: #3B82F6; font-size: 13px;">✦</span>
+                    <h3 style="font-size: 12px; font-weight: 800; color: #172B4D; text-transform: uppercase; letter-spacing: 0.5px; margin: 0;">AI FINANCE INSIGHTS</h3>
+                </div>
+                """, unsafe_allow_html=True)
+            with b_head_r:
+                if st.button("Review Exceptions Queue", key="btn_ai_insights_queue", use_container_width=True):
+                    st.session_state.page = "exceptions"
+                    st.rerun()
+                    
+            st.markdown(f"""
+            <p style="font-size: 12.5px; color: #172B4D; margin: 0 0 10px 0; line-height: 1.4;">
+                Today's batch reconciliation is <strong>{acc_val}% complete</strong>. The system has flagged <strong>{exc_count} transactions</strong> requiring audit verification.
+            </p>
+            <div style="font-size: 12px; color: #475569; display: flex; flex-direction: column; gap: 4px;">
+                <div><strong style="color: #172B4D;">Primary Driver:</strong> Settlement discrepancies hit Aug 22 batches.</div>
+                <div><strong style="color: #172B4D;">Potential Impact:</strong> <span style="color: #EF4444; font-weight: 700;">₹8,420.00</span> in bank credits requires explanation.</div>
+                <div><strong style="color: #172B4D;">Recommended Action:</strong> Run a bank credit audit and check Razorpay payouts.</div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+    # Bottom Right: Daily Close Workflow
+    with col_b2:
+        with st.container(border=True):
+            dc_head_l, dc_head_r = st.columns([2.2, 1.3])
+            with dc_head_l:
+                st.markdown("""
+                <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px;">
+                    <span style="font-size: 13px;">📋</span>
+                    <h3 style="font-size: 12px; font-weight: 800; color: #172B4D; text-transform: uppercase; letter-spacing: 0.5px; margin: 0;">DAILY CLOSE WORKFLOW</h3>
+                </div>
+                """, unsafe_allow_html=True)
+            with dc_head_r:
+                if st.button("Review Exceptions Queue", key="btn_dc_insights_queue", use_container_width=True):
+                    st.session_state.page = "exceptions"
+                    st.rerun()
+                    
+            status_tag = "PENDING ACTIONS" if exc_count > 0 else "✓ READY TO CLOSE"
+            status_color = "#D97706" if exc_count > 0 else "#10B981"
+            
+            st.markdown(f"""
+            <div style="font-size: 10.5px; font-weight: 800; color: {status_color}; text-transform: uppercase; margin-bottom: 8px;">DAILY CLOSE STATUS: {status_tag}</div>
+            <div style="display: flex; flex-direction: column; gap: 4px; font-size: 11.5px; color: #172B4D;">
+                <div style="display: flex; align-items: center; gap: 6px;"><span style="color: #10B981; font-weight: 800;">✓</span> Gateway reconciliation complete ({len(df_tx)}/{len(df_tx)} matched)</div>
+                <div style="display: flex; align-items: center; gap: 6px;"><span style="color: #10B981; font-weight: 800;">✓</span> Bank settlement deposits verified</div>
+                <div style="display: flex; align-items: center; gap: 6px;"><span style="color: #10B981; font-weight: 800;">✓</span> Gateway processing fees validated</div>
+                <div style="display: flex; align-items: center; gap: 6px;"><span style="color: #EF4444; font-weight: 800;">⚠</span> {exc_count} exceptions require manual attention</div>
+                <div style="display: flex; align-items: center; gap: 6px;"><span style="color: #10B981; font-weight: 800;">✓</span> Tax compliance & TDS checks completed</div>
+            </div>
+            <div style="margin-top: 8px; font-size: 11.5px; color: #6B7C93; line-height: 1.3;">
+                {exc_count} unresolved exceptions are preventing batch closure. You must audit and resolve these exceptions before closing today's daily ledger.
+            </div>
+            """, unsafe_allow_html=True)
 
 # ----------------------------------------------------
 # PAGE 2: TRANSACTIONS LEDGER & AUDIT
@@ -2521,27 +2620,24 @@ elif st.session_state.page == "transactions":
         # Draw custom premium HTML Table
         html_rows = ""
         for idx, row in display_df.iterrows():
-            status_pill_class = row['resolution_status'].lower()
-            status_label = "Reconciled" if row['resolution_status'] == 'AUTO_RESOLVED' else "Needs Review"
+            status_badge = get_mismatch_badge_html(row['calculated_exceptions'], row['resolution_status'])
             
             # Action audit deep link
             tx_id = row['transaction_id']
-            action_btn = f'<a href="?page=transactions&audit_tx={tx_id}" target="_self" class="action-link">Audit</a>'
+            action_btn = f'<a href="?page=transactions&audit_tx={tx_id}" target="_self" class="action-link" style="color: #2563EB; font-weight: 600; text-decoration: none;">Audit →</a>'
             
-            html_rows += f"""
-            <tr>
-                <td><code>{tx_id}</code></td>
-                <td><code>{row['order_id'] or 'NaN'}</code></td>
-                <td><strong>{row['type']}</strong></td>
-                <td>₹{row['amount_inr']:,.2f}</td>
-                <td>₹{row['fee_inr']:,.2f}</td>
-                <td>₹{row['tax_inr']:,.2f}</td>
-                <td>₹{row['settled_amount_inr']:,.2f}</td>
-                <td><span class="status-pill {status_pill_class}">{status_label}</span></td>
-                <td>{row['confidence_score']*100:.0f}%</td>
-                <td>{action_btn}</td>
-            </tr>
-            """
+            html_rows += f"""<tr>
+<td><code style="color: #2563EB;">{tx_id}</code></td>
+<td><code>{row['order_id'] or '—'}</code></td>
+<td><strong style="color: #172B4D;">{row['type']}</strong></td>
+<td><strong style="color: #172B4D;">₹{row['amount_inr']:,.2f}</strong></td>
+<td>₹{row['fee_inr']:,.2f}</td>
+<td>₹{row['tax_inr']:,.2f}</td>
+<td><strong style="color: #172B4D;">₹{row['settled_amount_inr']:,.2f}</strong></td>
+<td>{status_badge}</td>
+<td><strong>{row['confidence_score']*100:.0f}%</strong></td>
+<td>{action_btn}</td>
+</tr>"""
             
         if not html_rows:
             html_rows = "<tr><td colspan='10' style='text-align: center; color: var(--text-sec);'>No transactions found matching filters.</td></tr>"
@@ -2728,75 +2824,110 @@ elif st.session_state.page == "exceptions":
 # ----------------------------------------------------
 # PAGE 4: SETTLEMENTS LEDGER
 # ----------------------------------------------------
+# ----------------------------------------------------
+# PAGE 4: SETTLEMENTS LEDGER
+# ----------------------------------------------------
 elif st.session_state.page == "settlements":
-    st.markdown("<h2>Merchant Settlements Dashboard</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='font-size: 22px; font-weight: 800; color: #172B4D; font-family: \"Outfit\", sans-serif; margin-bottom: 2px;'>Merchant Settlements Dashboard</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='color: #6B7C93; font-size: 13.5px; margin: 0 0 16px 0;'>Daily store nodal clearing batches, bank transfer reconciliation, and credit variance verification.</p>", unsafe_allow_html=True)
     
-    # Expected vs settled metrics
-    col_st1, col_st2, col_st3 = st.columns(3)
+    # 4 Clean Summary Cards
+    col_st1, col_st2, col_st3, col_st4 = st.columns(4)
     with col_st1:
-        st.markdown(f"""
-        <div class="kpi-card">
-            <div class="kpi-title">Expected Settlement Volume</div>
-            <div class="kpi-value">₹72,392.00</div>
-            <div class="kpi-desc">Total expected credit ledger</div>
+        st.markdown(clean_html(f"""
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
+            <div style="font-size: 9.5px; font-weight: 700; color: #6B7C93; text-transform: uppercase;">EXPECTED SETTLEMENT VOLUME</div>
+            <div style="font-size: 18px; font-weight: 800; color: #172B4D; font-family: 'Outfit', sans-serif; margin: 4px 0 2px 0;">₹72,392.00</div>
+            <div style="font-size: 10.5px; color: #6B7C93;">Total expected credit ledger</div>
         </div>
-        """, unsafe_allow_html=True)
+        """), unsafe_allow_html=True)
     with col_st2:
-        st.markdown(f"""
-        <div class="kpi-card">
-            <div class="kpi-title">Settled Amount</div>
-            <div class="kpi-value" style="color: var(--success);">₹{metrics['settled_to_bank_inr']:,.2f}</div>
-            <div class="kpi-desc"><span style="color: var(--success);">✓</span> Confirmed deposits</div>
+        st.markdown(clean_html(f"""
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
+            <div style="font-size: 9.5px; font-weight: 700; color: #6B7C93; text-transform: uppercase;">SETTLED AMOUNT</div>
+            <div style="font-size: 18px; font-weight: 800; color: #10B981; font-family: 'Outfit', sans-serif; margin: 4px 0 2px 0;">₹{metrics['settled_to_bank_inr']:,.2f}</div>
+            <div style="font-size: 10.5px; color: #10B981; font-weight: 600;">✓ Confirmed deposits</div>
         </div>
-        """, unsafe_allow_html=True)
+        """), unsafe_allow_html=True)
     with col_st3:
-        st.markdown(f"""
-        <div class="kpi-card">
-            <div class="kpi-title">Pending Settlement</div>
-            <div class="kpi-value" style="color: var(--warning);">₹{metrics['expected_next_2_days_inr']:,.2f}</div>
-            <div class="kpi-desc">T+2 Settlement delay queue</div>
+        st.markdown(clean_html(f"""
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
+            <div style="font-size: 9.5px; font-weight: 700; color: #6B7C93; text-transform: uppercase;">PENDING SETTLEMENT</div>
+            <div style="font-size: 18px; font-weight: 800; color: #D97706; font-family: 'Outfit', sans-serif; margin: 4px 0 2px 0;">₹{metrics['expected_next_2_days_inr']:,.2f}</div>
+            <div style="font-size: 10.5px; color: #D97706; font-weight: 600;">⏳ T+2 Settlement delay queue</div>
         </div>
-        """, unsafe_allow_html=True)
+        """), unsafe_allow_html=True)
+    with col_st4:
+        # Variance count
+        var_count = len(df_bank[df_bank['status'].str.contains('MISMATCH', na=False)]) if 'status' in df_bank.columns else 0
+        var_color = "#EF4444" if var_count > 0 else "#10B981"
+        st.markdown(clean_html(f"""
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
+            <div style="font-size: 9.5px; font-weight: 700; color: #6B7C93; text-transform: uppercase;">SETTLEMENT VARIANCES</div>
+            <div style="font-size: 18px; font-weight: 800; color: {var_color}; font-family: 'Outfit', sans-serif; margin: 4px 0 2px 0;">{var_count} Batches</div>
+            <div style="font-size: 10.5px; color: {var_color}; font-weight: 600;">{'⚠️ Requires credit review' if var_count > 0 else '✓ Zero bank variances'}</div>
+        </div>
+        """), unsafe_allow_html=True)
         
-    st.markdown("<br>", unsafe_allow_html=True)
-    
-    st.markdown("### DAILY SETTLEMENT LEDGER")
+    st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
+    st.markdown("<h3 style='font-size: 14px; font-weight: 800; color: #172B4D; font-family: \"Outfit\", sans-serif; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px;'>DAILY SETTLEMENT LEDGER</h3>", unsafe_allow_html=True)
     
     # Format and draw settlements table
     settle_rows = ""
     for idx, row in df_bank.iterrows():
-        status_label = row['status'].replace('_', ' ')
-        status_pill_class = row['status'].lower()
+        expected_amt = row.get('expected_amount_inr', row['amount_inr'])
+        bank_amt = row['amount_inr']
+        diff = round(expected_amt - bank_amt, 2)
+        raw_status = str(row.get('status', 'RECONCILED')).upper()
         
-        settle_rows += f"""
-        <tr>
-            <td><strong>{row['date']}</strong></td>
-            <td>₹{row['expected_amount_inr']:,.2f}</td>
-            <td>₹{row['amount_inr']:,.2f}</td>
-            <td><code>{row['bank_reference'] or 'Omitted'}</code></td>
-            <td><span class="status-pill {status_pill_class}">{status_label}</span></td>
-        </tr>
-        """
+        # Color coding for mismatch vs reconciled
+        if "MISMATCH" in raw_status or abs(diff) >= 0.01:
+            status_badge = '<span style="background: #FEE2E2; color: #EF4444; border: 1px solid #FECACA; padding: 3px 8px; border-radius: 6px; font-size: 10px; font-weight: 700; white-space: nowrap; display: inline-block;">🔴 SETTLEMENT MISMATCH</span>'
+            delta_badge = f'<span style="background: #FFF5F5; color: #EF4444; border: 1px solid #FED7D7; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700;">Δ ₹{abs(diff):,.2f}</span>'
+        elif "PENDING" in raw_status or "DELAY" in raw_status:
+            status_badge = '<span style="background: #FEF3C7; color: #D97706; border: 1px solid #FDE68A; padding: 3px 8px; border-radius: 6px; font-size: 10px; font-weight: 700; white-space: nowrap; display: inline-block;">🟡 PENDING T+2</span>'
+            delta_badge = '<span style="color: #D97706; font-size: 10.5px; font-weight: 600;">In Transit</span>'
+        else:
+            status_badge = '<span style="background: #ECFDF5; color: #10B981; border: 1px solid #A7F3D0; padding: 3px 8px; border-radius: 6px; font-size: 10px; font-weight: 700; white-space: nowrap; display: inline-block;">🟢 RECONCILED</span>'
+            delta_badge = '<span style="color: #10B981; font-weight: 600; font-size: 10.5px;">₹0.00</span>'
+            
+        ref_id = row.get('bank_reference') or 'Omitted'
         
-    st.markdown(clean_html(f"""<div class="custom-table-container">
-        <table class="custom-table">
+        settle_rows += f"""<tr>
+<td style="padding: 10px 8px; border-bottom: 1px solid #F1F5F9;"><strong style="color: #172B4D;">{row['date']}</strong></td>
+<td style="padding: 10px 8px; border-bottom: 1px solid #F1F5F9; font-weight: 600; color: #172B4D;">₹{expected_amt:,.2f}</td>
+<td style="padding: 10px 8px; border-bottom: 1px solid #F1F5F9; font-weight: 600; color: #172B4D;">₹{bank_amt:,.2f}</td>
+<td style="padding: 10px 8px; border-bottom: 1px solid #F1F5F9;">{delta_badge}</td>
+<td style="padding: 10px 8px; border-bottom: 1px solid #F1F5F9;"><code style="background: #F8FAFC; border: 1px solid #E2E8F0; padding: 2px 6px; border-radius: 4px; font-size: 11px; color: #2563EB;">{ref_id}</code></td>
+<td style="padding: 10px 8px; border-bottom: 1px solid #F1F5F9;">{status_badge}</td>
+</tr>"""
+        
+    st.markdown(clean_html(f"""
+    <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 14px; overflow-x: auto; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
+        <table class="admin-table" style="width: 100%; border-collapse: collapse; font-size: 11.5px; font-family: 'Inter', sans-serif;">
             <thead>
-                <tr>
-                    <th>Settlement Date</th>
-                    <th>Expected Amount</th>
-                    <th>Bank Credit Amount</th>
-                    <th>Bank Reference ID</th>
-                    <th>Status</th>
+                <tr style="border-bottom: 1px solid #E2E8F0;">
+                    <th style="padding: 8px 8px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase; text-align: left;">Settlement Date</th>
+                    <th style="padding: 8px 8px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase; text-align: left;">Expected Amount</th>
+                    <th style="padding: 8px 8px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase; text-align: left;">Bank Credit Amount</th>
+                    <th style="padding: 8px 8px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase; text-align: left;">Delta / Variance</th>
+                    <th style="padding: 8px 8px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase; text-align: left;">Bank Reference ID</th>
+                    <th style="padding: 8px 8px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase; text-align: left;">Status</th>
                 </tr>
             </thead>
             <tbody>
                 {settle_rows}
             </tbody>
         </table>
-    </div>"""), unsafe_allow_html=True)
+    </div>
+    """), unsafe_allow_html=True)
     
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.info("ℹ️ T+2 Settlements Window: Standard collection credits hit bank statement 2 days after transaction dates. Refunds and Payouts resolve instantly (T+0).")
+    st.markdown("<div style='margin-top: 14px;'></div>", unsafe_allow_html=True)
+    st.markdown(clean_html("""
+    <div style="background-color: #EFF6FF; border: 1px solid #BFDBFE; border-left: 4px solid #3B82F6; padding: 12px 16px; border-radius: 6px; font-size: 12px; color: #1E40AF;">
+        <strong>ℹ️ T+2 Settlements Window:</strong> Standard collection credits hit bank statement 2 days after transaction dates. Refunds and Payouts resolve instantly (T+0).
+    </div>
+    """), unsafe_allow_html=True)
 
 # ----------------------------------------------------
 # PAGE 5: PAYOUTS DETAILS
