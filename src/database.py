@@ -333,6 +333,31 @@ def init_db():
         
         conn.commit()
         
+    # Seed Notifications if empty
+    cursor.execute("SELECT COUNT(*) FROM notifications")
+    if cursor.fetchone()[0] == 0:
+        notifs_seed = [
+            ("admin", None, None, "ADMIN", "Daily Settlement Batches Cleared", "Nodal settlement batches for Flipkart and Amazon reconciled successfully with zero clearing delay."),
+            ("admin", "flipkart", "fk_delhi", "ADMIN", "Fee Rate Discrepancy Flagged", "Detected 2 fee rate mismatches on Flipkart Delhi store transactions requiring operations review."),
+            ("admin", "amazon", "az_mumbai", "ADMIN", "Section 194-O TDS Threshold Approaching", "Amazon gross platform collections crossed 85% of monthly compliance threshold."),
+            ("admin", None, None, "ADMIN", "Automated 3-Way Reconciliation Run", "24,850 gateway, order, and bank records reconciled with 98.4% auto-match rate.")
+        ]
+        for u_id, m_id, s_id, r, title, msg in notifs_seed:
+            cursor.execute("INSERT INTO notifications (user_id, merchant_id, store_id, role, title, message) VALUES (%s, %s, %s, %s, %s, %s)" if (is_pg or is_my) else "INSERT INTO notifications (user_id, merchant_id, store_id, role, title, message) VALUES (?, ?, ?, ?, ?, ?)", (u_id, m_id, s_id, r, title, msg))
+        conn.commit()
+
+    # Seed Support Tickets if empty
+    cursor.execute("SELECT COUNT(*) FROM support_tickets WHERE status IN ('OPEN', 'PENDING')")
+    if cursor.fetchone()[0] == 0:
+        tickets_seed = [
+            ("flipkart", "fk_delhi", "pay_95822412", "Gateway fee charged at 3% instead of contracted 2%", "We noticed fee discrepancy on order_24942603 where 3% MDR was charged. Please adjust credit.", "OPEN", "High", "Gateway Exception Review"),
+            ("amazon", "az_mumbai", "pay_42780411", "Delayed bank settlement for August 10 batch", "Bank settlement amount was credited as ₹9,952.26 instead of expected ₹10,202.26. Please verify nodal transfer.", "OPEN", "Medium", "Settlement Inquiry"),
+            ("flipkart", "fk_mumbai", "pay_89254563", "Missing credit advice for payout batch #892", "Bank credit reference advice missing for Mumbai store batch on Aug 18.", "OPEN", "Low", "Payout Status")
+        ]
+        for m_id, s_id, tx_id, subj, msg, stat, prio, cat in tickets_seed:
+            cursor.execute("INSERT INTO support_tickets (merchant_id, store_id, transaction_id, subject, message, status, priority, category) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)" if (is_pg or is_my) else "INSERT INTO support_tickets (merchant_id, store_id, transaction_id, subject, message, status, priority, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (m_id, s_id, tx_id, subj, msg, stat, prio, cat))
+        conn.commit()
+        
     conn.close()
 
 def is_db_empty():
@@ -1200,6 +1225,46 @@ def get_action_logs(limit=50):
     except Exception as e:
         print(f"Error getting action logs: {e}")
         return []
+    finally:
+        conn.close()
+
+def get_users():
+    """Retrieves all registered platform users."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT user_id, email, role, merchant_id, store_id FROM users")
+        users = []
+        for r in cursor.fetchall():
+            users.append({
+                'user_id': r[0],
+                'email': r[1],
+                'role': r[2],
+                'merchant_id': r[3],
+                'store_id': r[4]
+            })
+        return users
+    except Exception as e:
+        print(f"Error getting users: {e}")
+        return []
+    finally:
+        conn.close()
+
+def reset_user_password(email, new_password):
+    """Resets a user's password."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    is_pg = is_postgres_configured()
+    is_my = is_mysql_configured()
+    placeholder = "%s" if (is_pg or is_my) else "?"
+    pw_hash = hash_password(new_password)
+    try:
+        cursor.execute(f"UPDATE users SET password_hash = {placeholder} WHERE email = {placeholder}", (pw_hash, email))
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"Error resetting password: {e}")
+        return False
     finally:
         conn.close()
 
