@@ -2,7 +2,7 @@ import os
 import pandas as pd
 from datetime import datetime, timedelta
 
-def run_3way_reconciliation():
+def run_3way_reconciliation(merchant_id=None, store_id=None):
     from src.database import load_financial_data, is_db_empty
     from src.upload_pipeline import run_pipeline
     
@@ -11,7 +11,7 @@ def run_3way_reconciliation():
         run_pipeline(reset=True)
         
     # Load from SQLite / MySQL database
-    df_rp, df_orders, df_bank = load_financial_data()
+    df_rp, df_orders, df_bank = load_financial_data(merchant_id, store_id)
     
     # Preprocess date formats
     df_orders['created_at_dt'] = pd.to_datetime(df_orders['created_at'], format="%d-%m-%Y %H:%M", errors='coerce')
@@ -40,10 +40,28 @@ def run_3way_reconciliation():
     expected_daily_settlement = df_rp.groupby('expected_settlement_date_str')['settled_amount_inr'].sum().reset_index()
     expected_daily_settlement.columns = ['date', 'expected_amount_inr']
     
+    # Aggregate bank statement by date to handle multi-store records in a single merchant/admin view
+    if not df_bank.empty:
+        agg_dict = {
+            'amount_inr': 'sum',
+            'bank_reference': lambda x: '; '.join(filter(None, x.astype(str))) if len(x) > 0 else '',
+            'date_dt': 'first'
+        }
+        if 'merchant_id' in df_bank.columns:
+            agg_dict['merchant_id'] = 'first'
+        if 'store_id' in df_bank.columns:
+            agg_dict['store_id'] = 'first'
+        if 'status' in df_bank.columns:
+            agg_dict['status'] = lambda x: 'SETTLEMENT_AMOUNT_MISMATCH' if 'SETTLEMENT_AMOUNT_MISMATCH' in x.values else ('MISSING_BANK_CREDIT' if 'MISSING_BANK_CREDIT' in x.values else 'RECONCILED')
+            
+        df_bank_grouped = df_bank.groupby('date').agg(agg_dict).reset_index()
+    else:
+        df_bank_grouped = df_bank
+
     # Merge with actual bank statement
     df_bank_reconciled = pd.merge(
         expected_daily_settlement, 
-        df_bank, 
+        df_bank_grouped, 
         on='date', 
         how='outer'
     )
@@ -235,10 +253,20 @@ def run_3way_reconciliation():
             'calculated_exceptions': exceptions,
             'resolution_status': res_status,
             'confidence_score': conf_score,
-            'orig_exception': orig_exception
+            'orig_exception': orig_exception,
+            'merchant_id': row.get('merchant_id', ''),
+            'store_id': row.get('store_id', '')
         })
         
     df_reconciled_txs = pd.DataFrame(reconciled_records)
+    if df_reconciled_txs.empty:
+        df_reconciled_txs = pd.DataFrame(columns=[
+            'transaction_id', 'order_id', 'type', 'status', 'method', 
+            'amount_inr', 'fee_inr', 'tax_inr', 'settled_amount_inr', 
+            'expected_settlement_date', 'calculated_exceptions', 
+            'resolution_status', 'confidence_score', 'orig_exception',
+            'merchant_id', 'store_id'
+        ])
     
     # ----------------------------------------------------
     # FIND UNMATCHED INTERNAL ORDERS (Orphans)
@@ -258,9 +286,18 @@ def run_3way_reconciliation():
                 'customer_email': row['customer_email'],
                 'calculated_exceptions': ["GATEWAY_PAYMENT_NOT_FOUND"],
                 'resolution_status': "NEEDS_REVIEW",
-                'confidence_score': 0.0
+                'confidence_score': 0.0,
+                'merchant_id': row.get('merchant_id', ''),
+                'store_id': row.get('store_id', '')
             })
     df_unmatched_orders = pd.DataFrame(unmatched_orders)
+    if df_unmatched_orders.empty:
+        df_unmatched_orders = pd.DataFrame(columns=[
+            'order_id', 'amount_inr', 'created_at', 'status', 
+            'customer_email', 'calculated_exceptions', 
+            'resolution_status', 'confidence_score',
+            'merchant_id', 'store_id'
+        ])
     
     # ----------------------------------------------------
     # CALCULATE METRICS

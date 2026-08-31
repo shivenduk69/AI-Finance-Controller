@@ -9,7 +9,7 @@ class TestReconciliation(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         # Run reconciliation once for all tests
-        cls.metrics, cls.df_tx, cls.df_unmatched, cls.df_bank, cls.bank_excs = run_3way_reconciliation()
+        cls.metrics, cls.df_tx, cls.df_unmatched, cls.df_bank, cls.bank_excs = run_3way_reconciliation(merchant_id='flipkart')
         
     def test_metrics_integrity(self):
         # Verify metric keys are present

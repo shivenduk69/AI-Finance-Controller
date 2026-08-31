@@ -63,6 +63,28 @@ Once the server initializes, open **`http://localhost:8501`** in your browser.
 
 ---
 
+## 🔒 Predefined Demo Credentials
+
+Use the following corporate accounts to test different roles and data isolation:
+
+### Merchant Portal Accounts
+* **Flipkart Delhi Location**:
+  * **Email**: `flipkart.delhi@merchant-demo.com`
+  * **Password**: `flipkart123`
+  * **Store Scope**: Delhi (`fk_delhi`)
+* **Amazon Delhi Location**:
+  * **Email**: `amazon.delhi@merchant-demo.com`
+  * **Password**: `amazon123`
+  * **Store Scope**: Delhi (`az_delhi`)
+
+### Admin Control Plane Account
+* **Razorpay Global Administrator**:
+  * **Email**: `admin@razorpay-demo.com`
+  * **Password**: `admin123`
+  * **Role Scope**: Cross-tenant platform oversight and support resolution queue.
+
+---
+
 ## 🤖 AI Financial Assistant Configuration
 
 The dashboard includes a conversational **AI Financial Assistant** in Tab 4, allowing you to ask queries such as:

@@ -194,7 +194,7 @@ def keyword_search_fallback(query, chunks, top_n=3):
     scored_chunks.sort(key=lambda x: x[0], reverse=True)
     return [text for score, text in scored_chunks[:top_n] if score > 0]
 
-def retrieve_relevant_context_with_sources(query, api_key, top_n=3):
+def retrieve_relevant_context_with_sources(query, api_key, top_n=3, merchant_id=None):
     """Retrieves top_n document chunks matching the query with their metadata. Employs semantic or keyword search."""
     chunks = get_document_chunks()
     if not chunks:
@@ -203,6 +203,19 @@ def retrieve_relevant_context_with_sources(query, api_key, top_n=3):
         chunks = get_document_chunks()
         if not chunks:
             return []
+            
+    # Tenant RAG Isolation: Filter out other merchants' exported data chunks
+    if merchant_id:
+        filtered = []
+        for c in chunks:
+            fname = c['file_name']
+            if "_data_" in fname or fname.startswith(("07_", "08_", "09_")):
+                if merchant_id in fname:
+                    filtered.append(c)
+            else:
+                # Policy document chunks are visible to all tenants
+                filtered.append(c)
+        chunks = filtered
             
     # Check if we can perform semantic search (we need query api_key, and chunks must have embeddings)
     has_embeddings = any(c['embedding'] and len(c['embedding']) > 0 for c in chunks)
@@ -277,9 +290,9 @@ def retrieve_relevant_context_with_sources(query, api_key, top_n=3):
             results.append(chunk_copy)
     return results
 
-def retrieve_relevant_context(query, api_key, top_n=3):
+def retrieve_relevant_context(query, api_key, top_n=3, merchant_id=None):
     """Retrieves top_n document chunks matching the query. Employs semantic or keyword search."""
-    results = retrieve_relevant_context_with_sources(query, api_key, top_n)
+    results = retrieve_relevant_context_with_sources(query, api_key, top_n, merchant_id)
     if not results:
         return "No relevant context found in documents."
     return "\n\n---\n\n".join([r['text_content'] for r in results])
