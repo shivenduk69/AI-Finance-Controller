@@ -1161,3 +1161,45 @@ def delete_user_session(token):
         print(f"Error deleting session: {e}")
     finally:
         conn.close()
+
+def log_action(user_id, action, details=""):
+    """Inserts an action into audit_logs table."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    is_pg = is_postgres_configured()
+    is_my = is_mysql_configured()
+    placeholders = "%s, %s, %s" if (is_pg or is_my) else "?, ?, ?"
+    try:
+        cursor.execute(f"INSERT INTO audit_logs (user_id, action, details) VALUES ({placeholders})", (user_id, action, str(details)))
+        conn.commit()
+    except Exception as e:
+        print(f"Error logging action: {e}")
+    finally:
+        conn.close()
+
+def get_action_logs(limit=50):
+    """Retrieves the most recent audit logs."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    is_pg = is_postgres_configured()
+    is_my = is_mysql_configured()
+    placeholder = "%s" if (is_pg or is_my) else "?"
+    try:
+        cursor.execute(f"SELECT log_id, user_id, action, details, timestamp FROM audit_logs ORDER BY log_id DESC LIMIT {placeholder}", (limit,))
+        rows = cursor.fetchall()
+        logs = []
+        for r in rows:
+            logs.append({
+                'log_id': r[0],
+                'user_id': r[1],
+                'action': r[2],
+                'details': r[3],
+                'timestamp': str(r[4])
+            })
+        return logs
+    except Exception as e:
+        print(f"Error getting action logs: {e}")
+        return []
+    finally:
+        conn.close()
+

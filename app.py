@@ -595,12 +595,26 @@ st.markdown("""
         color: #FFFFFF !important;
     }
     
+    section[data-testid="stSidebar"] div.element-container:has(.sidebar-btn-active) + div.element-container button,
+    section[data-testid="stSidebar"] div[data-testid="element-container"]:has(.sidebar-btn-active) + div[data-testid="element-container"] button,
     section[data-testid="stSidebar"] .sidebar-btn-active div.stButton > button,
     section[data-testid="stSidebar"] .sidebar-btn-active button {
         background-color: #212c40 !important;
         color: #FFFFFF !important;
         font-weight: 600 !important;
         border-left: 3px solid #3B82F6 !important;
+    }
+    
+    /* Admin active sidebar button state */
+    section[data-testid="stSidebar"] div.element-container:has(.sidebar-btn-active-admin) + div.element-container button,
+    section[data-testid="stSidebar"] div[data-testid="element-container"]:has(.sidebar-btn-active-admin) + div[data-testid="element-container"] button,
+    section[data-testid="stSidebar"] .sidebar-btn-active-admin div.stButton > button,
+    section[data-testid="stSidebar"] .sidebar-btn-active-admin button {
+        background-color: #0B66E4 !important;
+        color: #FFFFFF !important;
+        font-weight: 600 !important;
+        border-radius: 6px !important;
+        border-left: none !important;
     }
     
     /* Color the first character (the Unicode symbol icon) blue when active */
@@ -627,11 +641,20 @@ st.markdown("""
         border-color: transparent !important;
     }
     
+    /* Sidebar badge container positioning */
+    .sidebar-btn-wrapper {
+        position: relative !important;
+        width: 100% !important;
+        height: 0px !important;
+        margin: 0px !important;
+        padding: 0px !important;
+    }
+    
     /* Lightning bolt circle indicator on Settlements */
     .sidebar-btn-badge-lightning {
         position: absolute !important;
         right: 24px !important;
-        top: 50% !important;
+        top: 22px !important;
         transform: translateY(-50%) !important;
         background-color: #0070F3 !important;
         color: white !important;
@@ -647,7 +670,277 @@ st.markdown("""
         font-weight: bold !important;
     }
     
-    /* Top Header elements */
+    /* Sidebar badges for Support & Notifications */
+    .sidebar-badge {
+        position: absolute !important;
+        right: 20px !important;
+        top: 22px !important;
+        transform: translateY(-50%) !important;
+        padding: 2px 7px !important;
+        border-radius: 10px !important;
+        font-size: 11px !important;
+        font-weight: 700 !important;
+        line-height: 1 !important;
+        pointer-events: none !important;
+        z-index: 10 !important;
+    }
+    .sidebar-badge.badge-red {
+        background-color: #EF4444 !important;
+        color: #FFFFFF !important;
+    }
+    .sidebar-badge.badge-blue {
+        background-color: #3B82F6 !important;
+        color: #FFFFFF !important;
+    }
+    
+    /* Admin Custom Sidebar Navigation */
+    .admin-sidebar-section {
+        color: #6B7C93;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.8px;
+        margin-top: 14px;
+        margin-bottom: 4px;
+        padding-left: 14px;
+        text-transform: uppercase;
+        font-family: 'Inter', sans-serif;
+    }
+    .admin-nav-item {
+        display: flex;
+        align-items: center;
+        padding: 7px 12px;
+        margin: 2px 10px;
+        border-radius: 6px;
+        color: #9AA9BD;
+        text-decoration: none;
+        font-size: 13.5px;
+        font-weight: 500;
+        transition: all 0.15s ease;
+        cursor: pointer;
+        height: 36px;
+        box-sizing: border-box;
+    }
+    .admin-nav-item:hover {
+        background-color: rgba(255, 255, 255, 0.05);
+        color: #FFFFFF;
+        text-decoration: none;
+    }
+    .admin-nav-item.active {
+        background-color: #0B66E4;
+        color: #FFFFFF;
+        font-weight: 600;
+    }
+    .admin-nav-icon {
+        font-size: 13px;
+        margin-right: 10px;
+        width: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .admin-nav-text {
+        flex-grow: 1;
+    }
+    .admin-nav-badge {
+        padding: 1px 6px;
+        border-radius: 10px;
+        font-size: 10.5px;
+        font-weight: 700;
+        line-height: 1.2;
+        margin-left: auto;
+    }
+    .admin-nav-badge.badge-red {
+        background-color: #EF4444;
+        color: #FFFFFF;
+    }
+    .admin-nav-badge.badge-blue {
+        background-color: #3B82F6;
+        color: #FFFFFF;
+    }
+    
+    /* Streamlit Border Container Overrides for Admin Analytics Cards */
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        background-color: #FFFFFF !important;
+        border: 1px solid #E2E8F0 !important;
+        border-radius: 8px !important;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02) !important;
+        padding: 14px 16px !important;
+        box-sizing: border-box !important;
+    }
+    div[data-testid="stVerticalBlockBorderWrapper"] > div {
+        background-color: transparent !important;
+    }
+    
+    /* Admin Fintech KPI Cards */
+    .admin-kpi-card {
+        background-color: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 8px;
+        padding: 12px 14px;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        min-height: 110px;
+        height: 100%;
+        box-sizing: border-box;
+    }
+    .admin-kpi-top {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .admin-kpi-icon {
+        width: 28px;
+        height: 28px;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 13px;
+        flex-shrink: 0;
+    }
+    .admin-kpi-label {
+        font-size: 10px;
+        font-weight: 700;
+        color: #6B7C93;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        line-height: 1.2;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .admin-kpi-value {
+        font-size: 20px;
+        font-weight: 800;
+        color: #172B4D;
+        font-family: 'Outfit', sans-serif;
+        line-height: 1.1;
+        margin: 4px 0 2px 0;
+    }
+    .admin-kpi-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 10.5px;
+        color: #6B7C93;
+        border-top: 1px solid #F8FAFC;
+        padding-top: 4px;
+    }
+    .admin-kpi-trend {
+        font-size: 10px;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+    .admin-kpi-trend.trend-green {
+        color: #10B981;
+    }
+    .admin-kpi-trend.trend-red {
+        color: #EF4444;
+    }
+    
+    /* Admin Standard Dashboard Cards */
+    .admin-card {
+        background-color: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 8px;
+        padding: 14px 16px;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+        margin-bottom: 14px;
+        box-sizing: border-box;
+        overflow-x: auto;
+        width: 100%;
+    }
+    .admin-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+    .admin-card-title {
+        font-size: 14px;
+        font-weight: 700;
+        color: #172B4D;
+        font-family: 'Outfit', sans-serif;
+        margin: 0;
+    }
+    .admin-card-action {
+        font-size: 11.5px;
+        font-weight: 600;
+        color: #2563EB;
+        text-decoration: none;
+        cursor: pointer;
+    }
+    .admin-card-action:hover {
+        text-decoration: underline;
+    }
+    
+    /* Admin Fintech Tables */
+    .admin-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-family: 'Inter', sans-serif;
+        font-size: 11px;
+    }
+    .admin-table th {
+        text-align: left;
+        font-size: 9.5px;
+        font-weight: 700;
+        color: #6B7C93;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        padding: 6px 6px;
+        border-bottom: 1px solid #E2E8F0;
+        background-color: transparent;
+        white-space: nowrap;
+    }
+    .admin-table td {
+        padding: 7px 6px;
+        border-bottom: 1px solid #F8FAFC;
+        color: #172B4D;
+        vertical-align: middle;
+        white-space: nowrap;
+        font-size: 11px;
+    }
+    .admin-table tr:last-child td {
+        border-bottom: none;
+    }
+    .admin-table tr:hover td {
+        background-color: #F8FAFC;
+    }
+    
+    /* Admin Badge Helpers */
+    .admin-badge {
+        display: inline-block;
+        padding: 1px 6px;
+        border-radius: 4px;
+        font-size: 10px;
+        font-weight: 600;
+        text-align: center;
+        white-space: nowrap;
+    }
+    .admin-badge-success {
+        background-color: #ECFDF5;
+        color: #10B981;
+    }
+    .admin-badge-warning {
+        background-color: #FEF3C7;
+        color: #D97706;
+    }
+    .admin-badge-danger {
+        background-color: #FEE2E2;
+        color: #EF4444;
+    }
+    .admin-badge-info {
+        background-color: #EFF6FF;
+        color: #3B82F6;
+    }
+    .admin-badge-neutral {
+        background-color: #F1F5F9;
+        color: #64748B;
+    }
+    
     .header-search-container {
         background-color: #FFFFFF;
         border: 1px solid var(--border);
@@ -1213,8 +1506,62 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 def clean_html(html_str):
-    """Strips all leading and trailing whitespace from each line to prevent Markdown code block triggers."""
-    return "\n".join([line.strip() for line in html_str.split("\n")])
+    """Strips all leading and trailing whitespace and removes newlines to guarantee no Markdown code block triggers."""
+    return "".join([line.strip() for line in html_str.splitlines() if line.strip()])
+
+def get_mismatch_color_tuple(exceptions, status="NEEDS_REVIEW"):
+    """
+    Returns (bg_color, text_color, border_color, badge_label, severity_name)
+    Categories:
+    - RED (Critical): Amount mismatch, Bank credit missing, Missing order/gateway payment, Disputes.
+    - YELLOW / AMBER (Rates & Pricing): Fee mismatch, Tax/GST mismatch, Bank settlement amount diff.
+    - ORANGE (Status & Lifecycle): Status mismatch, Settled amount diff.
+    - GREEN (Auto-Resolved): Auto resolved or no active exceptions.
+    """
+    if status == "AUTO_RESOLVED" or not exceptions or (isinstance(exceptions, list) and len(exceptions) == 0):
+        return ("#ECFDF5", "#10B981", "#A7F3D0", "AUTO_RESOLVED", "RESOLVED")
+        
+    exc_str = " ".join([str(e) for e in exceptions]).upper() if isinstance(exceptions, list) else str(exceptions).upper()
+    
+    # 1. RED - Critical / High Severity
+    if any(k in exc_str for k in ['AMOUNT_MISMATCH', 'BANK_CREDIT_MISSING', 'MISSING_ORDER', 'NOT_FOUND', 'DISPUTE', 'CHARGEBACK']):
+        return ("#FEE2E2", "#EF4444", "#FECACA", "NEEDS_REVIEW (Critical)", "HIGH")
+    # 2. YELLOW / AMBER - Pricing, Fee & Tax
+    elif any(k in exc_str for k in ['FEE_MISMATCH', 'TAX_MISMATCH', 'GST_MISMATCH', 'BANK_SETTLEMENT_MISMATCH']):
+        return ("#FEF3C7", "#D97706", "#FDE68A", "NEEDS_REVIEW (Fee/Tax)", "MEDIUM")
+    # 3. ORANGE - Status & Timing differences
+    elif any(k in exc_str for k in ['STATUS_MISMATCH', 'SETTLED_AMOUNT_MISMATCH']):
+        return ("#FFEDD5", "#EA580C", "#FED7AA", "NEEDS_REVIEW (Status)", "LOW")
+    else:
+        return ("#FEE2E2", "#EF4444", "#FECACA", "NEEDS_REVIEW", "HIGH")
+
+def get_mismatch_badge_html(exceptions, status="NEEDS_REVIEW"):
+    bg, color, border, label, _ = get_mismatch_color_tuple(exceptions, status)
+    return f'<span style="background-color: {bg}; color: {color}; border: 1px solid {border}; padding: 2px 7px; border-radius: 4px; font-size: 10.5px; font-weight: 700; white-space: nowrap; display: inline-block;">{label}</span>'
+
+def get_exception_pills_html(exceptions):
+    if not exceptions or (isinstance(exceptions, list) and len(exceptions) == 0):
+        return '<span style="color: #94A3B8; font-size: 11px;">None</span>'
+        
+    exc_list = exceptions if isinstance(exceptions, list) else [exceptions]
+    pills = []
+    for exc_item in exc_list:
+        e_str = str(exc_item).upper()
+        if any(k in e_str for k in ['AMOUNT_MISMATCH', 'BANK_CREDIT_MISSING', 'MISSING_ORDER', 'NOT_FOUND', 'DISPUTE', 'CHARGEBACK']):
+            bg, color, border = '#FEE2E2', '#EF4444', '#FECACA'
+            clean = "Amount Mismatch" if "AMOUNT" in e_str else ("Missing Bank Credit" if "BANK_CREDIT" in e_str else ("Missing Order" if "MISSING_ORDER" in e_str or "NOT_FOUND" in e_str else "Dispute"))
+        elif any(k in e_str for k in ['FEE_MISMATCH', 'TAX_MISMATCH', 'GST_MISMATCH', 'BANK_SETTLEMENT_MISMATCH']):
+            bg, color, border = '#FEF3C7', '#D97706', '#FDE68A'
+            clean = "Fee Mismatch" if "FEE" in e_str else ("Tax Mismatch" if "TAX" in e_str or "GST" in e_str else "Settlement Diff")
+        elif any(k in e_str for k in ['STATUS_MISMATCH', 'SETTLED_AMOUNT_MISMATCH']):
+            bg, color, border = '#FFEDD5', '#EA580C', '#FED7AA'
+            clean = "Status Mismatch" if "STATUS" in e_str else "Settled Amt Diff"
+        else:
+            bg, color, border = '#F1F5F9', '#64748B', '#E2E8F0'
+            clean = str(exc_item).split('(')[0].replace('_', ' ').strip().title()
+            
+        pills.append(f'<span style="background-color: {bg}; color: {color}; border: 1px solid {border}; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; white-space: nowrap; margin-right: 4px; display: inline-block; margin-bottom: 2px;">{clean}</span>')
+    return "".join(pills)
 
 def generate_ai_response(user_query, conversation_id=None, merchant_id=None):
     # Retrieve matching segments from .md and .pdf policy files
@@ -1389,11 +1736,14 @@ def export_data_for_rag(df_tx, df_orders, df_bank, merchant_id="flipkart", store
 # ----------------------------------------------------
 def render_sidebar_item(label, page_name, icon="", badge=""):
     is_active = st.session_state.page == page_name
-    active_class = "sidebar-btn-active" if is_active else "sidebar-btn-inactive"
-    st.sidebar.markdown(f"""
-    <div class="sidebar-btn-wrapper {active_class}">
-        {badge}
-    """, unsafe_allow_html=True)
+    is_admin = st.session_state.user and st.session_state.user.get('role') == 'ADMIN'
+    if is_active:
+        active_class = "sidebar-btn-active-admin" if is_admin else "sidebar-btn-active"
+    else:
+        active_class = "sidebar-btn-inactive"
+        
+    badge_html = badge if badge else ""
+    st.sidebar.markdown(f'<div class="sidebar-btn-wrapper {active_class}">{badge_html}</div>', unsafe_allow_html=True)
     if st.sidebar.button(f"{icon}  {label}", key=f"btn_nav_{page_name}", use_container_width=True):
         st.session_state.page = page_name
         st.session_state.audit_tx = None
@@ -1401,7 +1751,6 @@ def render_sidebar_item(label, page_name, icon="", badge=""):
         st.query_params.clear()
         st.query_params.page = page_name
         st.rerun()
-    st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
 # Render Sidebar Title & Subtitle
 # Base64 encode logo.png for sidebar rendering
@@ -1429,19 +1778,39 @@ st.sidebar.markdown(clean_html(f"""
 
 # Render Sidebar Menu groupings and items based on role
 user = st.session_state.user
-if user['role'] == 'ADMIN':
+if user and user.get('role') == 'ADMIN':
     st.sidebar.markdown('<div class="sidebar-section-header">ADMIN CONSOLE</div>', unsafe_allow_html=True)
-    render_sidebar_item("Admin Overview", "admin", "\u25A3")
-    render_sidebar_item("Platform Exceptions", "admin_exceptions", "\u26A0")
-    render_sidebar_item("Support Tickets", "admin_tickets", "\U0001F39F")
+    render_sidebar_item("Dashboard", "admin", "▣")
+    render_sidebar_item("Merchants", "admin_merchants", "♙")
+    render_sidebar_item("Stores", "admin_stores", "⌂")
+    render_sidebar_item("Transactions", "admin_transactions", "⇄")
+    render_sidebar_item("Reconciliation", "admin_reconciliation", "⇄")
+    render_sidebar_item("Exceptions", "admin_exceptions", "⇄")
+    render_sidebar_item("Settlements", "admin_settlements", "▣")
+    render_sidebar_item("Payouts", "admin_payouts", "⇄")
+    
+    st.sidebar.markdown('<div class="sidebar-section-header">SUPPORT</div>', unsafe_allow_html=True)
+    # Dynamic open tickets count
+    open_tickets_count = 5
+    try:
+        from src.database import get_support_tickets
+        all_tks = get_support_tickets()
+        open_tks = [t for t in all_tks if t.get('status') in ['OPEN', 'PENDING']]
+        if open_tks:
+            open_tickets_count = len(open_tks)
+    except Exception:
+        pass
+    render_sidebar_item("Support Tickets", "admin_tickets", "⚙", badge=f'<div class="sidebar-badge badge-red">{open_tickets_count}</div>')
+    render_sidebar_item("Notifications", "admin_notifications", "♧", badge='<div class="sidebar-badge badge-blue">12</div>')
     
     st.sidebar.markdown('<div class="sidebar-section-header">INTELLIGENCE</div>', unsafe_allow_html=True)
-    render_sidebar_item("AI & RAG Center", "admin_ai", "\u2726")
-    render_sidebar_item("Users & Access", "admin_users", "\u2659")
-    render_sidebar_item("Audit Logs", "admin_audit", "\u25A4")
+    render_sidebar_item("AI & RAG Center", "admin_ai", "✦")
+    render_sidebar_item("Knowledge Base", "admin_kb", "▤")
     
-    st.sidebar.markdown('<div style="border-bottom: 1px solid rgba(255, 255, 255, 0.05); width: 84%; margin: 12px auto 14px auto;"></div>', unsafe_allow_html=True)
-    render_sidebar_item("Settings", "admin_settings", "\u2699")
+    st.sidebar.markdown('<div class="sidebar-section-header">ADMINISTRATION</div>', unsafe_allow_html=True)
+    render_sidebar_item("Users & Access", "admin_users", "♙")
+    render_sidebar_item("Audit Logs", "admin_audit", "▤")
+    render_sidebar_item("Settings", "admin_settings", "⚙")
 else:
     st.sidebar.markdown('<div class="sidebar-section-header">OVERVIEW</div>', unsafe_allow_html=True)
     render_sidebar_item("Dashboard", "dashboard", "\u25A3")
@@ -1465,38 +1834,40 @@ else:
     render_sidebar_item("Settings", "settings", "\u2699")
 
 # Profile info area at the bottom
-role_label = "Razorpay Admin" if user['role'] == 'ADMIN' else f"{user['merchant_id'].upper()} - {user['store_id'].split('_')[-1].upper()}"
-initials = "RA" if user['role'] == 'ADMIN' else f"{user['merchant_id'][:1].upper()}{user['store_id'].split('_')[-1][:1].upper()}"
+if user:
+    role_label = "Razorpay Admin" if user.get('role') == 'ADMIN' else f"{(user.get('merchant_id') or '').upper()} - {(user.get('store_id') or '').split('_')[-1].upper()}"
+    initials = "RA" if user.get('role') == 'ADMIN' else f"{(user.get('merchant_id') or 'M')[:1].upper()}{(user.get('store_id') or 'S').split('_')[-1][:1].upper()}"
+    user_email = user.get('email', '')
 
-st.sidebar.markdown(f"""
-<div style="padding: 12px 24px; border-top: 1px solid rgba(255,255,255,0.05); margin-top: 10px; display: flex; align-items: center; gap: 10px;">
-    <div style="width: 32px; height: 32px; border-radius: 50%; background-color: #0F4C75; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 13px; font-family: 'Outfit', sans-serif;">
-        {initials}
+    st.sidebar.markdown(f"""
+    <div style="padding: 12px 24px; border-top: 1px solid rgba(255,255,255,0.05); margin-top: 10px; display: flex; align-items: center; gap: 10px;">
+        <div style="width: 32px; height: 32px; border-radius: 50%; background-color: #0F4C75; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 13px; font-family: 'Outfit', sans-serif;">
+            {initials}
+        </div>
+        <div style="display: flex; flex-direction: column; font-family: 'Inter', sans-serif;">
+            <span style="color: white; font-weight: 600; font-size: 13px; line-height: 1.2;">{role_label}</span>
+            <span style="color: #9AA9BD; font-size: 11px;">{user_email}</span>
+        </div>
     </div>
-    <div style="display: flex; flex-direction: column; font-family: 'Inter', sans-serif;">
-        <span style="color: white; font-weight: 600; font-size: 13px; line-height: 1.2;">{role_label}</span>
-        <span style="color: #9AA9BD; font-size: 11px;">{user['email']}</span>
-    </div>
-</div>
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
-if st.sidebar.button("🚪 Log Out", key="logout_sidebar_btn", use_container_width=True):
-    from src.database import log_action, delete_user_session
-    log_action(user['user_id'], "User Logout", "Logged out successfully.")
-    token = st.context.cookies.get("session_token")
-    if token:
-        delete_user_session(token)
-    st.session_state.logged_in = False
-    st.session_state.user = None
-    st.session_state.page = "dashboard"
-    import streamlit.components.v1 as components
-    components.html("""
-    <script>
-        window.parent.document.cookie = "session_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC;";
-        window.parent.location.reload();
-    </script>
-    """, height=0, width=0)
-    st.stop()
+    if st.sidebar.button("🚪 Log Out", key="logout_sidebar_btn", use_container_width=True):
+        from src.database import log_action, delete_user_session
+        log_action(user.get('user_id', ''), "User Logout", "Logged out successfully.")
+        token = st.context.cookies.get("session_token")
+        if token:
+            delete_user_session(token)
+        st.session_state.logged_in = False
+        st.session_state.user = None
+        st.session_state.page = "dashboard"
+        import streamlit.components.v1 as components
+        components.html("""
+        <script>
+            window.parent.document.cookie = "session_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC;";
+            window.parent.location.reload();
+        </script>
+        """, height=0, width=0)
+        st.stop()
 
 # ----------------------------------------------------
 # TOP HEADER BAR IMPLEMENTATION
@@ -3039,57 +3410,559 @@ elif st.session_state.page == "tickets":
                 st.markdown("</div>", unsafe_allow_html=True)
 
 # ----------------------------------------------------
-# ADMIN PAGE 1: OVERVIEW
+# ADMIN PAGE 1: OVERVIEW / DASHBOARD (REDESIGNED)
 # ----------------------------------------------------
 elif st.session_state.page == "admin":
-    st.markdown("<h2>🔒 Admin Platform Oversight Overview</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='color: var(--text-sec); font-size: 14px;'>Razorpay Control Plane central operations overview.</p>", unsafe_allow_html=True)
-    
-    from src.database import get_global_metrics, get_support_tickets
-    m_stats = get_global_metrics()
-    
-    k1, k2, k3, k4 = st.columns(4)
-    with k1:
-        st.metric("Total Merchants", "2 (Flipkart, Amazon)")
-    with k2:
-        st.metric("Active Stores", "10 stores")
-    with k3:
-        st.metric("Global Processing Volume", f"INR {m_stats['total_volume']:,.2f}")
-    with k4:
-        st.metric("Unresolved Exceptions", m_stats['needs_review_count'])
-        
-    all_tickets = get_support_tickets()
-    open_t = len([t for t in all_tickets if t['status'] == 'PENDING'])
-    resolved_t = len([t for t in all_tickets if t['status'] == 'RESOLVED'])
-    
-    col_diag, col_tickets = st.columns(2)
-    with col_diag:
-        st.markdown("### System Health Diagnostics")
+    # 1. TOP HEADER
+    col_h_left, col_h_right = st.columns([1.8, 1.2])
+    with col_h_left:
         st.markdown("""
-        <div style="background-color: #FFFFFF; border: 1px solid var(--border); padding: 16px; border-radius: 6px; font-family: 'Inter', sans-serif;">
-            <div style="margin-bottom:8px;"><span style="color:#10B981; font-weight:bold; margin-right:8px;">&#10003;</span> Core Database Sync: <strong>Connected</strong></div>
-            <div style="margin-bottom:8px;"><span style="color:#10B981; font-weight:bold; margin-right:8px;">&#10003;</span> Multi-Tenant Isolation Layers: <strong>Active</strong></div>
-            <div style="margin-bottom:8px;"><span style="color:#10B981; font-weight:bold; margin-right:8px;">&#10003;</span> Background Ingestion Pipeline: <strong>Healthy (Idle)</strong></div>
-            <div><span style="color:#10B981; font-weight:bold; margin-right:8px;">&#10003;</span> Vector Search Index: <strong>Active</strong></div>
+        <div style="margin-bottom: 18px;">
+            <h1 style="margin: 0; font-size: 24px; font-weight: 700; color: #172B4D; font-family: 'Outfit', sans-serif; letter-spacing: -0.3px;">
+                Welcome back, Razorpay Admin 👋
+            </h1>
+            <p style="margin: 3px 0 0 0; font-size: 13.5px; color: #6B7C93; font-family: 'Inter', sans-serif;">
+                Here's what's happening across your platform today.
+            </p>
         </div>
         """, unsafe_allow_html=True)
         
-    with col_tickets:
-        st.markdown("### Operations Ticket Queue")
-        tickets_queue_html = (
-            '<div style="background-color: #FFFFFF; border: 1px solid var(--border); padding: 16px; border-radius: 6px; font-family: \'Inter\', sans-serif;">\n'
-            '    <div style="display:flex; justify-content:space-between; margin-bottom:8px;">\n'
-            f'        <span>Open Support Queries:</span><strong>{open_t} tickets</strong>\n'
-            '    </div>\n'
-            '    <div style="display:flex; justify-content:space-between; margin-bottom:8px;">\n'
-            f'        <span>Resolved Support Queries:</span><strong>{resolved_t} tickets</strong>\n'
-            '    </div>\n'
-            '    <div style="margin-top:12px;">\n'
-            '        <a href="?page=admin_tickets" target="_self" style="display:block; text-align:center; padding:6px; background-color:#0F4C75; color:white; border-radius:4px; text-decoration:none; font-weight:600; font-size:13px;">Manage Tickets Queue &#127903;</a>\n'
-            '    </div>\n'
-            '</div>'
-        )
-        st.markdown(tickets_queue_html, unsafe_allow_html=True)
+    with col_h_right:
+        col_dr, col_rf, col_exp = st.columns([2.0, 0.6, 1.6])
+        with col_dr:
+            # Custom styled date display
+            st.markdown("""
+            <div style="display: flex; align-items: center; justify-content: space-between; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 12px; font-size: 12px; font-weight: 500; color: #172B4D; box-shadow: 0 1px 2px rgba(0,0,0,0.02); height: 38px;">
+                <span>📅 May 22 – May 28, 2025</span>
+                <span style="font-size: 10px; color: #6B7C93;">▼</span>
+            </div>
+            """, unsafe_allow_html=True)
+        with col_rf:
+            if st.button("↻", key="admin_refresh_btn", help="Refresh Dashboard", use_container_width=True):
+                st.rerun()
+        with col_exp:
+            # Export report button - triggers CSV download of platform transactions
+            report_csv = df_tx.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Export Report",
+                data=report_csv,
+                file_name=f"razorpay_admin_platform_report_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv",
+                key="admin_export_report_btn",
+                use_container_width=True
+            )
+            
+    # 2. SIX KPI CARDS IN 1 ROW
+    k1, k2, k3, k4, k5, k6 = st.columns(6)
+    
+    # 2. SIX KPI CARDS IN 1 ROW
+    k1, k2, k3, k4, k5, k6 = st.columns(6)
+    
+    with k1:
+        st.markdown("""
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); height: 110px; display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <div style="width: 22px; height: 22px; border-radius: 5px; background-color: #F3E8FF; color: #9333EA; display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0;">👥</div>
+                <div style="font-size: 9.5px; font-weight: 700; color: #6B7C93; text-transform: uppercase; letter-spacing: 0.2px;">TOTAL MERCHANTS</div>
+            </div>
+            <div style="font-size: 20px; font-weight: 800; color: #172B4D; font-family: 'Outfit', sans-serif; line-height: 1.1; margin: 2px 0;">2</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: #6B7C93; border-top: 1px solid #F8FAFC; padding-top: 4px;">
+                <span style="white-space: nowrap;">Active platform</span>
+                <span style="color: #10B981; font-weight: 600; white-space: nowrap;">↗ 0%</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    with k2:
+        st.markdown("""
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); height: 110px; display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <div style="width: 22px; height: 22px; border-radius: 5px; background-color: #EFF6FF; color: #3B82F6; display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0;">🏬</div>
+                <div style="font-size: 9.5px; font-weight: 700; color: #6B7C93; text-transform: uppercase; letter-spacing: 0.2px;">ACTIVE STORES</div>
+            </div>
+            <div style="font-size: 20px; font-weight: 800; color: #172B4D; font-family: 'Outfit', sans-serif; line-height: 1.1; margin: 2px 0;">10</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: #6B7C93; border-top: 1px solid #F8FAFC; padding-top: 4px;">
+                <span style="white-space: nowrap;">Operational</span>
+                <span style="color: #10B981; font-weight: 600; white-space: nowrap;">↗ 11.1%</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    with k3:
+        st.markdown("""
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); height: 110px; display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <div style="width: 22px; height: 22px; border-radius: 5px; background-color: #ECFDF5; color: #10B981; display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0;">💳</div>
+                <div style="font-size: 9.5px; font-weight: 700; color: #6B7C93; text-transform: uppercase; letter-spacing: 0.2px;">TOTAL TRANSACTIONS</div>
+            </div>
+            <div style="font-size: 20px; font-weight: 800; color: #172B4D; font-family: 'Outfit', sans-serif; line-height: 1.1; margin: 2px 0;">24,850</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: #6B7C93; border-top: 1px solid #F8FAFC; padding-top: 4px;">
+                <span style="white-space: nowrap;">This week</span>
+                <span style="color: #10B981; font-weight: 600; white-space: nowrap;">↗ 8.4%</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    with k4:
+        vol_fmt = f"₹{metrics['gross_collections_inr']:,.2f}" if 'gross_collections_inr' in metrics else "₹196,373.71"
+        st.markdown(f"""
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); height: 110px; display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <div style="width: 22px; height: 22px; border-radius: 5px; background-color: #FEF3C7; color: #D97706; display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0;">🪙</div>
+                <div style="font-size: 9.5px; font-weight: 700; color: #6B7C93; text-transform: uppercase; letter-spacing: 0.2px;">PROCESSING VOLUME</div>
+            </div>
+            <div style="font-size: 18px; font-weight: 800; color: #172B4D; font-family: 'Outfit', sans-serif; line-height: 1.1; margin: 2px 0;">{vol_fmt}</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: #6B7C93; border-top: 1px solid #F8FAFC; padding-top: 4px;">
+                <span style="white-space: nowrap;">This week</span>
+                <span style="color: #10B981; font-weight: 600; white-space: nowrap;">↗ 12.6%</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    with k5:
+        exc_fmt = str(metrics.get('needs_review_count', 38))
+        st.markdown(f"""
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); height: 110px; display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <div style="width: 22px; height: 22px; border-radius: 5px; background-color: #FEE2E2; color: #EF4444; display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0;">⚠️</div>
+                <div style="font-size: 9.5px; font-weight: 700; color: #6B7C93; text-transform: uppercase; letter-spacing: 0.2px;">UNRESOLVED EXCEPTIONS</div>
+            </div>
+            <div style="font-size: 20px; font-weight: 800; color: #172B4D; font-family: 'Outfit', sans-serif; line-height: 1.1; margin: 2px 0;">{exc_fmt}</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: #6B7C93; border-top: 1px solid #F8FAFC; padding-top: 4px;">
+                <span style="white-space: nowrap;">Requires review</span>
+                <span style="color: #EF4444; font-weight: 600; white-space: nowrap;">↗ 5.6%</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    with k6:
+        st.markdown(f"""
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); height: 110px; display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <div style="width: 22px; height: 22px; border-radius: 5px; background-color: #FDF2F8; color: #EC4899; display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0;">🎫</div>
+                <div style="font-size: 9.5px; font-weight: 700; color: #6B7C93; text-transform: uppercase; letter-spacing: 0.2px;">OPEN TICKETS</div>
+            </div>
+            <div style="font-size: 20px; font-weight: 800; color: #172B4D; font-family: 'Outfit', sans-serif; line-height: 1.1; margin: 2px 0;">{open_tickets_count}</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: #6B7C93; border-top: 1px solid #F8FAFC; padding-top: 4px;">
+                <span style="white-space: nowrap;">Support queue</span>
+                <span style="color: #EF4444; font-weight: 600; white-space: nowrap;">↗ 5.6%</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    # 3. MAIN ANALYTICS ROW (3 COLUMNS)
+    st.markdown("<div style='margin-top: 16px;'></div>", unsafe_allow_html=True)
+    col_a1, col_a2, col_a3 = st.columns([1.6, 1.2, 1.2])
+    
+    # Column 1: Transaction Volume Trend
+    with col_a1:
+        with st.container(border=True):
+            st.markdown("""
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                <h3 style="font-size: 13.5px; font-weight: 700; color: #172B4D; font-family: 'Outfit', sans-serif; margin: 0;">Transaction Volume Trend</h3>
+                <div style="font-size: 10.5px; color: #6B7C93; background: #F8FAFC; border: 1px solid #E2E8F0; padding: 2px 6px; border-radius: 4px; font-weight: 500;">
+                    7 Days ▼
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            import plotly.graph_objects as go
+            fig_trend = go.Figure()
+            
+            dates_x = ['May 22', 'May 23', 'May 24', 'May 25', 'May 26', 'May 27', 'May 28']
+            this_week_y = [2300, 3950, 4200, 4800, 6100, 7100, 5800]
+            last_week_y = [1800, 2400, 2750, 3400, 4300, 5600, 4900]
+            
+            fig_trend.add_trace(go.Scatter(
+                x=dates_x,
+                y=this_week_y,
+                mode='lines+markers',
+                name='This Week',
+                line=dict(color='#2563EB', width=2.2),
+                marker=dict(size=6, color='#2563EB', line=dict(color='#FFFFFF', width=1.5)),
+                hovertemplate='<b>This Week</b>: %{y:,}<extra></extra>'
+            ))
+            
+            fig_trend.add_trace(go.Scatter(
+                x=dates_x,
+                y=last_week_y,
+                mode='lines+markers',
+                name='Last Week',
+                line=dict(color='#94A3B8', width=1.8, dash='dot'),
+                marker=dict(size=5, symbol='diamond', color='#94A3B8'),
+                hovertemplate='<b>Last Week</b>: %{y:,}<extra></extra>'
+            ))
+            
+            fig_trend.update_layout(
+                height=195,
+                margin=dict(l=5, r=5, t=15, b=10),
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+                legend=dict(
+                    orientation='h',
+                    yanchor='bottom',
+                    y=1.02,
+                    xanchor='left',
+                    x=0,
+                    font=dict(size=10, color='#6B7C93', family='Inter'),
+                    itemclick=False,
+                    itemdoubleclick=False
+                ),
+                xaxis=dict(
+                    showgrid=False,
+                    zeroline=False,
+                    tickfont=dict(size=9.5, color='#6B7C93', family='Inter'),
+                    linecolor='#E2E8F0'
+                ),
+                yaxis=dict(
+                    showgrid=True,
+                    gridcolor='#F1F5F9',
+                    zeroline=False,
+                    range=[0, 8500],
+                    tickvals=[0, 2000, 4000, 6000, 8000],
+                    ticktext=['0', '2K', '4K', '6K', '8K'],
+                    tickfont=dict(size=9.5, color='#6B7C93', family='Inter')
+                ),
+                hovermode='x unified'
+            )
+            st.plotly_chart(fig_trend, use_container_width=True, config={'displayModeBar': False})
+        
+    # Column 2: Reconciliation Health Donut Chart
+    with col_a2:
+        with st.container(border=True):
+            st.markdown("""
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h3 style="font-size: 13.5px; font-weight: 700; color: #172B4D; font-family: 'Outfit', sans-serif; margin: 0;">Reconciliation Health</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            fig_donut = go.Figure(data=[go.Pie(
+                labels=['Matched', 'Mismatched', 'Pending', 'Failed'],
+                values=[19842, 2845, 1723, 440],
+                hole=0.68,
+                marker=dict(colors=['#10B981', '#F97316', '#FBBF24', '#EF4444']),
+                textinfo='none',
+                hoverinfo='label+value+percent',
+                sort=False
+            )])
+            
+            fig_donut.update_layout(
+                height=130,
+                margin=dict(l=0, r=0, t=5, b=5),
+                showlegend=False,
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+                annotations=[
+                    dict(
+                        text='<span style="font-size:15px; font-weight:800; color:#172B4D; font-family:Outfit;">24,850</span><br><span style="font-size:10px; color:#6B7C93; font-family:Inter;">Total</span>',
+                        x=0.5, y=0.5,
+                        font_size=13,
+                        showarrow=False
+                    )
+                ]
+            )
+            st.plotly_chart(fig_donut, use_container_width=True, config={'displayModeBar': False})
+            
+            st.markdown("""
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 10px; font-family: 'Inter', sans-serif; border-top: 1px solid #F8FAFC; padding-top: 4px;">
+                <div style="display: flex; align-items: center; gap: 4px;">
+                    <span style="width: 6px; height: 6px; border-radius: 50%; background: #10B981; display: inline-block;"></span>
+                    <span style="color: #6B7C93;">Matched</span>
+                    <strong style="color: #172B4D; margin-left: auto;">19.8K (79.8%)</strong>
+                </div>
+                <div style="display: flex; align-items: center; gap: 4px;">
+                    <span style="width: 6px; height: 6px; border-radius: 50%; background: #F97316; display: inline-block;"></span>
+                    <span style="color: #6B7C93;">Mismatch</span>
+                    <strong style="color: #172B4D; margin-left: auto;">2.8K (11.4%)</strong>
+                </div>
+                <div style="display: flex; align-items: center; gap: 4px;">
+                    <span style="width: 6px; height: 6px; border-radius: 50%; background: #FBBF24; display: inline-block;"></span>
+                    <span style="color: #6B7C93;">Pending</span>
+                    <strong style="color: #172B4D; margin-left: auto;">1.7K (6.9%)</strong>
+                </div>
+                <div style="display: flex; align-items: center; gap: 4px;">
+                    <span style="width: 6px; height: 6px; border-radius: 50%; background: #EF4444; display: inline-block;"></span>
+                    <span style="color: #6B7C93;">Failed</span>
+                    <strong style="color: #172B4D; margin-left: auto;">440 (1.8%)</strong>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+    # Column 3: Top Exception Categories
+    with col_a3:
+        with st.container(border=True):
+            st.markdown("""
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <h3 style="font-size: 13.5px; font-weight: 700; color: #172B4D; font-family: 'Outfit', sans-serif; margin: 0;">Top Exception Categories</h3>
+                <a href="?page=admin_exceptions" target="_self" style="font-size: 11px; font-weight: 600; color: #2563EB; text-decoration: none;">View All</a>
+            </div>
+            <div style="display: flex; flex-direction: column; justify-content: space-around; height: 185px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px;">
+                    <div style="display: flex; align-items: center; gap: 6px; width: 115px; flex-shrink: 0;">
+                        <span style="color: #EF4444; font-size: 8px;">●</span>
+                        <span style="color: #172B4D; font-weight: 500;">Amount Mismatch</span>
+                    </div>
+                    <div style="flex-grow: 1; margin: 0 8px; background: #F1F5F9; height: 5px; border-radius: 3px; overflow: hidden;">
+                        <div style="width: 47.4%; height: 100%; background: #EF4444; border-radius: 3px;"></div>
+                    </div>
+                    <div style="width: 45px; text-align: right; flex-shrink: 0; font-size: 10.5px;">
+                        <strong style="color: #172B4D;">18</strong>
+                        <span style="color: #6B7C93; font-size: 9.5px; margin-left: 2px;">47.4%</span>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px;">
+                    <div style="display: flex; align-items: center; gap: 6px; width: 115px; flex-shrink: 0;">
+                        <span style="color: #F97316; font-size: 8px;">●</span>
+                        <span style="color: #172B4D; font-weight: 500;">Status Mismatch</span>
+                    </div>
+                    <div style="flex-grow: 1; margin: 0 8px; background: #F1F5F9; height: 5px; border-radius: 3px; overflow: hidden;">
+                        <div style="width: 21.1%; height: 100%; background: #F97316; border-radius: 3px;"></div>
+                    </div>
+                    <div style="width: 45px; text-align: right; flex-shrink: 0; font-size: 10.5px;">
+                        <strong style="color: #172B4D;">8</strong>
+                        <span style="color: #6B7C93; font-size: 9.5px; margin-left: 2px;">21.1%</span>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px;">
+                    <div style="display: flex; align-items: center; gap: 6px; width: 115px; flex-shrink: 0;">
+                        <span style="color: #F59E0B; font-size: 8px;">●</span>
+                        <span style="color: #172B4D; font-weight: 500;">Missing Bank Credit</span>
+                    </div>
+                    <div style="flex-grow: 1; margin: 0 8px; background: #F1F5F9; height: 5px; border-radius: 3px; overflow: hidden;">
+                        <div style="width: 15.8%; height: 100%; background: #F59E0B; border-radius: 3px;"></div>
+                    </div>
+                    <div style="width: 45px; text-align: right; flex-shrink: 0; font-size: 10.5px;">
+                        <strong style="color: #172B4D;">6</strong>
+                        <span style="color: #6B7C93; font-size: 9.5px; margin-left: 2px;">15.8%</span>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px;">
+                    <div style="display: flex; align-items: center; gap: 6px; width: 115px; flex-shrink: 0;">
+                        <span style="color: #3B82F6; font-size: 8px;">●</span>
+                        <span style="color: #172B4D; font-weight: 500;">Missing Order</span>
+                    </div>
+                    <div style="flex-grow: 1; margin: 0 8px; background: #F1F5F9; height: 5px; border-radius: 3px; overflow: hidden;">
+                        <div style="width: 10.5%; height: 100%; background: #3B82F6; border-radius: 3px;"></div>
+                    </div>
+                    <div style="width: 45px; text-align: right; flex-shrink: 0; font-size: 10.5px;">
+                        <strong style="color: #172B4D;">4</strong>
+                        <span style="color: #6B7C93; font-size: 9.5px; margin-left: 2px;">10.5%</span>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px;">
+                    <div style="display: flex; align-items: center; gap: 6px; width: 115px; flex-shrink: 0;">
+                        <span style="color: #6366F1; font-size: 8px;">●</span>
+                        <span style="color: #172B4D; font-weight: 500;">Tax Mismatch</span>
+                    </div>
+                    <div style="flex-grow: 1; margin: 0 8px; background: #F1F5F9; height: 5px; border-radius: 3px; overflow: hidden;">
+                        <div style="width: 2.6%; height: 100%; background: #6366F1; border-radius: 3px;"></div>
+                    </div>
+                    <div style="width: 45px; text-align: right; flex-shrink: 0; font-size: 10.5px;">
+                        <strong style="color: #172B4D;">1</strong>
+                        <span style="color: #6B7C93; font-size: 9.5px; margin-left: 2px;">2.6%</span>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px;">
+                    <div style="display: flex; align-items: center; gap: 6px; width: 115px; flex-shrink: 0;">
+                        <span style="color: #8B5CF6; font-size: 8px;">●</span>
+                        <span style="color: #172B4D; font-weight: 500;">Settlement Mismatch</span>
+                    </div>
+                    <div style="flex-grow: 1; margin: 0 8px; background: #F1F5F9; height: 5px; border-radius: 3px; overflow: hidden;">
+                        <div style="width: 2.6%; height: 100%; background: #8B5CF6; border-radius: 3px;"></div>
+                    </div>
+                    <div style="width: 45px; text-align: right; flex-shrink: 0; font-size: 10.5px;">
+                        <strong style="color: #172B4D;">1</strong>
+                        <span style="color: #6B7C93; font-size: 9.5px; margin-left: 2px;">2.6%</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    # 4. SECONDARY DATA ROW (3 COLUMNS)
+    st.markdown("<div style='margin-top: 16px;'></div>", unsafe_allow_html=True)
+    col_t1, col_t2, col_t3 = st.columns([1.0, 1.25, 1.25])
+    
+    # 1. Merchant Performance Table
+    with col_t1:
+        st.markdown("""
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); height: 220px; box-sizing: border-box; overflow-x: auto; width: 100%;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <h3 style="font-size: 13.5px; font-weight: 700; color: #172B4D; font-family: 'Outfit', sans-serif; margin: 0;">Merchant Performance</h3>
+                <a href="?page=admin_merchants" target="_self" style="font-size: 11px; font-weight: 600; color: #2563EB; text-decoration: none;">View All</a>
+            </div>
+            <table style="width: 100%; border-collapse: collapse; font-family: 'Inter', sans-serif; font-size: 11px;">
+                <thead>
+                    <tr>
+                        <th style="padding: 5px 4px; font-size: 9.5px; font-weight: 700; color: #6B7C93; text-transform: uppercase; border-bottom: 1px solid #E2E8F0; text-align: left; white-space: nowrap;">Merchant</th>
+                        <th style="padding: 5px 4px; font-size: 9.5px; font-weight: 700; color: #6B7C93; text-transform: uppercase; border-bottom: 1px solid #E2E8F0; text-align: left; white-space: nowrap;">Stores</th>
+                        <th style="padding: 5px 4px; font-size: 9.5px; font-weight: 700; color: #6B7C93; text-transform: uppercase; border-bottom: 1px solid #E2E8F0; text-align: left; white-space: nowrap;">Volume (₹)</th>
+                        <th style="padding: 5px 4px; font-size: 9.5px; font-weight: 700; color: #6B7C93; text-transform: uppercase; border-bottom: 1px solid #E2E8F0; text-align: left; white-space: nowrap;">Match Rate</th>
+                        <th style="padding: 5px 4px; font-size: 9.5px; font-weight: 700; color: #6B7C93; text-transform: uppercase; border-bottom: 1px solid #E2E8F0; text-align: left; white-space: nowrap;">Exceptions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td style="padding: 7px 4px; border-bottom: 1px solid #F8FAFC; white-space: nowrap;">
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <div style="width: 18px; height: 18px; border-radius: 3px; background: #FFD814; display: flex; align-items: center; justify-content: center; font-size: 10px;">🛍️</div>
+                                <strong>Flipkart</strong>
+                            </div>
+                        </td>
+                        <td style="padding: 7px 4px; border-bottom: 1px solid #F8FAFC; white-space: nowrap;">4</td>
+                        <td style="padding: 7px 4px; border-bottom: 1px solid #F8FAFC; white-space: nowrap;">₹112,842.45</td>
+                        <td style="padding: 7px 4px; border-bottom: 1px solid #F8FAFC; white-space: nowrap;"><span style="background: #ECFDF5; color: #10B981; padding: 1px 5px; border-radius: 3px; font-weight: 700; font-size: 10px;">98.2%</span></td>
+                        <td style="padding: 7px 4px; border-bottom: 1px solid #F8FAFC; white-space: nowrap;"><span style="color: #EF4444; font-weight: 700;">23</span></td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 7px 4px; border-bottom: none; white-space: nowrap;">
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <div style="width: 18px; height: 18px; border-radius: 3px; background: #131921; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #FF9900; font-family: Outfit; font-weight: 800;">a</div>
+                                <strong>Amazon</strong>
+                            </div>
+                        </td>
+                        <td style="padding: 7px 4px; border-bottom: none; white-space: nowrap;">6</td>
+                        <td style="padding: 7px 4px; border-bottom: none; white-space: nowrap;">₹83,531.26</td>
+                        <td style="padding: 7px 4px; border-bottom: none; white-space: nowrap;"><span style="background: #ECFDF5; color: #10B981; padding: 1px 5px; border-radius: 3px; font-weight: 700; font-size: 10px;">97.1%</span></td>
+                        <td style="padding: 7px 4px; border-bottom: none; white-space: nowrap;"><span style="color: #EF4444; font-weight: 700;">15</span></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    # 2. Recent High Priority Exceptions Table
+    with col_t2:
+        st.markdown("""
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); height: 220px; box-sizing: border-box; overflow-x: auto; width: 100%;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <h3 style="font-size: 13.5px; font-weight: 700; color: #172B4D; font-family: 'Outfit', sans-serif; margin: 0;">Recent High Priority Exceptions</h3>
+                <a href="?page=admin_exceptions" target="_self" style="font-size: 11px; font-weight: 600; color: #2563EB; text-decoration: none;">View All</a>
+            </div>
+            <table style="width: 100%; border-collapse: collapse; font-family: 'Inter', sans-serif; font-size: 11px;">
+                <thead>
+                    <tr>
+                        <th style="padding: 5px 4px; font-size: 9.5px; font-weight: 700; color: #6B7C93; text-transform: uppercase; border-bottom: 1px solid #E2E8F0; text-align: left; white-space: nowrap;">ID</th>
+                        <th style="padding: 5px 4px; font-size: 9.5px; font-weight: 700; color: #6B7C93; text-transform: uppercase; border-bottom: 1px solid #E2E8F0; text-align: left; white-space: nowrap;">Merchant</th>
+                        <th style="padding: 5px 4px; font-size: 9.5px; font-weight: 700; color: #6B7C93; text-transform: uppercase; border-bottom: 1px solid #E2E8F0; text-align: left; white-space: nowrap;">Store</th>
+                        <th style="padding: 5px 4px; font-size: 9.5px; font-weight: 700; color: #6B7C93; text-transform: uppercase; border-bottom: 1px solid #E2E8F0; text-align: left; white-space: nowrap;">Type</th>
+                        <th style="padding: 5px 4px; font-size: 9.5px; font-weight: 700; color: #6B7C93; text-transform: uppercase; border-bottom: 1px solid #E2E8F0; text-align: left; white-space: nowrap;">Amount</th>
+                        <th style="padding: 5px 4px; font-size: 9.5px; font-weight: 700; color: #6B7C93; text-transform: uppercase; border-bottom: 1px solid #E2E8F0; text-align: left; white-space: nowrap;">Age</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; white-space: nowrap;"><strong style="color: #2563EB;">EXC-10245</strong></td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; white-space: nowrap;">Flipkart</td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; white-space: nowrap;">Delhi</td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; white-space: nowrap;"><span style="background-color: #FEE2E2; color: #EF4444; border: 1px solid #FECACA; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 600;">Amount Mismatch</span></td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; white-space: nowrap;">₹24,850.00</td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; white-space: nowrap;"><span style="color: #EF4444; font-weight: 700;">2h</span></td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; white-space: nowrap;"><strong style="color: #2563EB;">EXC-10244</strong></td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; white-space: nowrap;">Amazon</td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; white-space: nowrap;">Mumbai</td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; white-space: nowrap;"><span style="background-color: #FFEDD5; color: #EA580C; border: 1px solid #FED7AA; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 600;">Status Mismatch</span></td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; white-space: nowrap;">₹18,420.50</td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; white-space: nowrap;"><span style="color: #F59E0B; font-weight: 700;">3h</span></td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; white-space: nowrap;"><strong style="color: #2563EB;">EXC-10243</strong></td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; white-space: nowrap;">Flipkart</td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; white-space: nowrap;">Bangalore</td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; white-space: nowrap;"><span style="background-color: #FEE2E2; color: #EF4444; border: 1px solid #FECACA; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 600;">Missing Bank Credit</span></td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; white-space: nowrap;">₹12,330.75</td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; white-space: nowrap;"><span style="color: #6B7C93; font-weight: 500;">5h</span></td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px 4px; border-bottom: none; white-space: nowrap;"><strong style="color: #2563EB;">EXC-10242</strong></td>
+                        <td style="padding: 6px 4px; border-bottom: none; white-space: nowrap;">Amazon</td>
+                        <td style="padding: 6px 4px; border-bottom: none; white-space: nowrap;">Delhi</td>
+                        <td style="padding: 6px 4px; border-bottom: none; white-space: nowrap;"><span style="background-color: #FEF3C7; color: #D97706; border: 1px solid #FDE68A; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 600;">Settlement Mismatch</span></td>
+                        <td style="padding: 6px 4px; border-bottom: none; white-space: nowrap;">₹8,965.10</td>
+                        <td style="padding: 6px 4px; border-bottom: none; white-space: nowrap;"><span style="color: #6B7C93; font-weight: 500;">6h</span></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    # 3. Recent Support Tickets Table
+    with col_t3:
+        st.markdown("""
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); height: 220px; box-sizing: border-box; overflow-x: auto; width: 100%;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <h3 style="font-size: 13.5px; font-weight: 700; color: #172B4D; font-family: 'Outfit', sans-serif; margin: 0;">Recent Support Tickets</h3>
+                <a href="?page=admin_tickets" target="_self" style="font-size: 11px; font-weight: 600; color: #2563EB; text-decoration: none;">View All</a>
+            </div>
+            <table style="width: 100%; border-collapse: collapse; font-family: 'Inter', sans-serif; font-size: 11px;">
+                <thead>
+                    <tr>
+                        <th style="padding: 5px 4px; font-size: 9.5px; font-weight: 700; color: #6B7C93; text-transform: uppercase; border-bottom: 1px solid #E2E8F0; text-align: left; white-space: nowrap;">Ticket ID</th>
+                        <th style="padding: 5px 4px; font-size: 9.5px; font-weight: 700; color: #6B7C93; text-transform: uppercase; border-bottom: 1px solid #E2E8F0; text-align: left; white-space: nowrap;">Merchant</th>
+                        <th style="padding: 5px 4px; font-size: 9.5px; font-weight: 700; color: #6B7C93; text-transform: uppercase; border-bottom: 1px solid #E2E8F0; text-align: left; white-space: nowrap;">Subject</th>
+                        <th style="padding: 5px 4px; font-size: 9.5px; font-weight: 700; color: #6B7C93; text-transform: uppercase; border-bottom: 1px solid #E2E8F0; text-align: left; white-space: nowrap;">Priority</th>
+                        <th style="padding: 5px 4px; font-size: 9.5px; font-weight: 700; color: #6B7C93; text-transform: uppercase; border-bottom: 1px solid #E2E8F0; text-align: left; white-space: nowrap;">Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; white-space: nowrap;"><strong style="color: #2563EB;">TKT-5005</strong></td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; white-space: nowrap;">Flipkart</td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; white-space: nowrap;">Settlement mismatch</td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; white-space: nowrap;"><span style="background: #FEE2E2; color: #EF4444; padding: 1px 5px; border-radius: 3px; font-size: 9.5px; font-weight: 600;">High</span></td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; white-space: nowrap;"><span style="background: #EFF6FF; color: #3B82F6; padding: 1px 5px; border-radius: 3px; font-size: 9.5px; font-weight: 600;">Open</span></td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; white-space: nowrap;"><strong style="color: #2563EB;">TKT-5004</strong></td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; white-space: nowrap;">Amazon</td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; white-space: nowrap;">Payment not reflected</td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; white-space: nowrap;"><span style="background: #FEF3C7; color: #D97706; padding: 1px 5px; border-radius: 3px; font-size: 9.5px; font-weight: 600;">Medium</span></td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; white-space: nowrap;"><span style="background: #EFF6FF; color: #3B82F6; padding: 1px 5px; border-radius: 3px; font-size: 9.5px; font-weight: 600;">In Progress</span></td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; white-space: nowrap;"><strong style="color: #2563EB;">TKT-5003</strong></td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; white-space: nowrap;">Flipkart</td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; white-space: nowrap;">Bank reconciliation</td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; white-space: nowrap;"><span style="background: #FEE2E2; color: #EF4444; padding: 1px 5px; border-radius: 3px; font-size: 9.5px; font-weight: 600;">High</span></td>
+                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; white-space: nowrap;"><span style="background: #EFF6FF; color: #3B82F6; padding: 1px 5px; border-radius: 3px; font-size: 9.5px; font-weight: 600;">Open</span></td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px 4px; border-bottom: none; white-space: nowrap;"><strong style="color: #2563EB;">TKT-5002</strong></td>
+                        <td style="padding: 6px 4px; border-bottom: none; white-space: nowrap;">Amazon</td>
+                        <td style="padding: 6px 4px; border-bottom: none; white-space: nowrap;">TDS query</td>
+                        <td style="padding: 6px 4px; border-bottom: none; white-space: nowrap;"><span style="background: #F1F5F9; color: #64748B; padding: 1px 5px; border-radius: 3px; font-size: 9.5px; font-weight: 600;">Low</span></td>
+                        <td style="padding: 6px 4px; border-bottom: none; white-space: nowrap;"><span style="background: #ECFDF5; color: #10B981; padding: 1px 5px; border-radius: 3px; font-size: 9.5px; font-weight: 600;">Resolved</span></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    # 5. BOTTOM PLATFORM ALERT
+    st.markdown("""
+    <div style="background-color: #FEF2F2; border: 1px solid #FEE2E2; border-radius: 8px; padding: 14px 20px; display: flex; justify-content: space-between; align-items: center; margin-top: 14px; margin-bottom: 20px;">
+        <div style="display: flex; align-items: center; gap: 14px;">
+            <div style="width: 32px; height: 32px; border-radius: 6px; background-color: #FEE2E2; display: flex; align-items: center; justify-content: center; color: #EF4444; font-size: 16px;">
+                ⚠️
+            </div>
+            <div>
+                <div style="font-weight: 700; font-size: 13.5px; color: #991B1B; font-family: 'Outfit', sans-serif;">
+                    Platform Alert
+                </div>
+                <div style="font-size: 12.5px; color: #7F1D1D; margin-top: 1px; font-family: 'Inter', sans-serif;">
+                    Unusual spike in amount mismatches detected in Flipkart stores. Please review exceptions.
+                </div>
+            </div>
+        </div>
+        <div>
+            <a href="?page=admin_exceptions" target="_self" style="background-color: #FFFFFF; border: 1px solid #FCA5A5; color: #991B1B; padding: 7px 16px; border-radius: 6px; font-size: 12.5px; font-weight: 600; text-decoration: none; display: inline-block;">
+                View Exceptions
+            </a>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 # ----------------------------------------------------
 # ADMIN PAGE 2: PLATFORM EXCEPTIONS LEDGER
@@ -3132,24 +4005,24 @@ elif st.session_state.page == "admin_exceptions":
         st.info("No active exceptions detected in the selected filter.")
     else:
         for idx, row in excs_tx.iterrows():
-            color_ex = "var(--error)" if row['resolution_status'] == 'NEEDS_REVIEW' else "var(--success)"
+            bg_c, text_c, border_c, status_lbl, severity = get_mismatch_color_tuple(row['calculated_exceptions'], row['resolution_status'])
             m_id_upper = row['merchant_id'].upper()
             s_loc_upper = row['store_id'].split('_')[-1].upper()
             amt_formatted = f"{row['amount_inr']:.2f}"
             method_val = row['method']
             
-            ex_list_str = ", ".join(row['calculated_exceptions'])
+            pills_html = get_exception_pills_html(row['calculated_exceptions'])
             ex_card_html = (
-                f'<div style="background-color: #FFFFFF; border: 1px solid var(--border); border-left: 4px solid {color_ex}; padding: 16px; border-radius: 6px; margin-bottom: 12px; font-family: \'Inter\', sans-serif;">\n'
-                '    <div style="display:flex; justify-content:space-between;">\n'
-                f'        <strong>Transaction Ref: {row["transaction_id"]} (Order Ref: {row["order_id"]})</strong>\n'
-                f'        <span style="font-weight:700; font-size:11px; padding:2px 8px; border-radius:20px; color:{color_ex}; background-color:#F1F5F9;">{row["resolution_status"]}</span>\n'
-                '    </div>\n'
-                '    <div style="font-size:12px; color:var(--text-sec); margin-top:2px;">\n'
-                f'        Merchant: {m_id_upper} | Store: {s_loc_upper} | Amount: INR {amt_formatted} | Method: {method_val}\n'
-                '    </div>\n'
-                '    <div style="font-size:13px; margin: 8px 0; color:#EF4444; font-weight:600;">\n'
-                f'        Exceptions: {ex_list_str}\n'
+                f'<div style="background-color: #FFFFFF; border: 1px solid #E2E8F0; border-left: 5px solid {text_c}; padding: 16px; border-radius: 6px; margin-bottom: 12px; font-family: \'Inter\', sans-serif; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">'
+                '    <div style="display:flex; justify-content:space-between; align-items:center;">'
+                f'        <strong style="color:#172B4D; font-size:13.5px;">Transaction Ref: <code>{row["transaction_id"]}</code> (Order Ref: <code>{row["order_id"]}</code>)</strong>'
+                f'        <span style="font-weight:700; font-size:11px; padding:2px 8px; border-radius:4px; color:{text_c}; background-color:{bg_c}; border:1px solid {border_c};">{status_lbl}</span>'
+                '    </div>'
+                '    <div style="font-size:12px; color:#6B7C93; margin-top:4px;">'
+                f'        Merchant: <strong>{m_id_upper}</strong> | Store: <strong>{s_loc_upper}</strong> | Amount: <strong style="color:#172B4D;">INR {amt_formatted}</strong> | Method: {method_val}'
+                '    </div>'
+                '    <div style="font-size:13px; margin: 8px 0;">'
+                f'        {pills_html}'
                 '    </div>'
             )
             st.markdown(ex_card_html, unsafe_allow_html=True)
@@ -3501,8 +4374,585 @@ elif st.session_state.page == "admin_settings":
         
     if st.button("Save Settings", key="btn_save_admin_settings"):
         st.success("[OK] Platform settings and Section 194-O rules updated successfully.")
-        st.toast("Settings saved!", icon="\u2705")
+        st.toast("Settings saved!", icon="✅")
         st.rerun()
+
+# ----------------------------------------------------
+# ADMIN SUBPAGE: MERCHANTS PORTFOLIO
+# ----------------------------------------------------
+elif st.session_state.page == "admin_merchants":
+    st.markdown("<h2>♙ Global Merchant Portfolio Directory</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='color: var(--text-sec); font-size: 14px;'>Platform overview of all registered enterprise merchant entities and store networks.</p>", unsafe_allow_html=True)
+    
+    col_m1, col_m2 = st.columns(2)
+    with col_m1:
+        st.markdown("""
+        <div class="admin-card">
+            <div class="admin-card-header">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 32px; height: 32px; border-radius: 6px; background: #FFD814; display: flex; align-items: center; justify-content: center; font-size: 16px;">🛍️</div>
+                    <div>
+                        <h3 class="admin-card-title">Flipkart Internet Private Limited</h3>
+                        <span style="font-size: 11.5px; color: #6B7C93;">MID: MID-FK-99201 | Status: <span class="admin-badge admin-badge-success">ACTIVE</span></span>
+                    </div>
+                </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin: 12px 0;">
+                <div style="background: #F8FAFC; padding: 10px; border-radius: 6px; border: 1px solid #E2E8F0;">
+                    <div style="font-size: 11px; color: #6B7C93; font-weight: 700;">OPERATIONAL STORES</div>
+                    <div style="font-size: 18px; font-weight: 800; color: #172B4D; font-family: Outfit;">4 Stores</div>
+                </div>
+                <div style="background: #F8FAFC; padding: 10px; border-radius: 6px; border: 1px solid #E2E8F0;">
+                    <div style="font-size: 11px; color: #6B7C93; font-weight: 700;">GROSS VOLUME</div>
+                    <div style="font-size: 18px; font-weight: 800; color: #172B4D; font-family: Outfit;">₹112,842.45</div>
+                </div>
+                <div style="background: #F8FAFC; padding: 10px; border-radius: 6px; border: 1px solid #E2E8F0;">
+                    <div style="font-size: 11px; color: #6B7C93; font-weight: 700;">RECONCILIATION</div>
+                    <div style="font-size: 18px; font-weight: 800; color: #10B981; font-family: Outfit;">98.2%</div>
+                </div>
+            </div>
+            <div style="font-size: 12px; color: #6B7C93;">
+                <strong>Stores:</strong> Delhi NCR (`fk_delhi`), Mumbai West (`fk_mumbai`), Bangalore Central (`fk_bangalore`), Hyderabad Hub (`fk_hyderabad`)
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    with col_m2:
+        st.markdown("""
+        <div class="admin-card">
+            <div class="admin-card-header">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 32px; height: 32px; border-radius: 6px; background: #131921; display: flex; align-items: center; justify-content: center; font-size: 16px; color: #FF9900; font-family: Outfit; font-weight: 800;">a</div>
+                    <div>
+                        <h3 class="admin-card-title">Amazon Seller Services India Pvt Ltd</h3>
+                        <span style="font-size: 11.5px; color: #6B7C93;">MID: MID-AZ-88310 | Status: <span class="admin-badge admin-badge-success">ACTIVE</span></span>
+                    </div>
+                </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin: 12px 0;">
+                <div style="background: #F8FAFC; padding: 10px; border-radius: 6px; border: 1px solid #E2E8F0;">
+                    <div style="font-size: 11px; color: #6B7C93; font-weight: 700;">OPERATIONAL STORES</div>
+                    <div style="font-size: 18px; font-weight: 800; color: #172B4D; font-family: Outfit;">6 Stores</div>
+                </div>
+                <div style="background: #F8FAFC; padding: 10px; border-radius: 6px; border: 1px solid #E2E8F0;">
+                    <div style="font-size: 11px; color: #6B7C93; font-weight: 700;">GROSS VOLUME</div>
+                    <div style="font-size: 18px; font-weight: 800; color: #172B4D; font-family: Outfit;">₹83,531.26</div>
+                </div>
+                <div style="background: #F8FAFC; padding: 10px; border-radius: 6px; border: 1px solid #E2E8F0;">
+                    <div style="font-size: 11px; color: #6B7C93; font-weight: 700;">RECONCILIATION</div>
+                    <div style="font-size: 18px; font-weight: 800; color: #10B981; font-family: Outfit;">97.1%</div>
+                </div>
+            </div>
+            <div style="font-size: 12px; color: #6B7C93;">
+                <strong>Stores:</strong> Mumbai South (`az_mumbai`), Delhi Central (`az_delhi`), Bangalore Hub (`az_bangalore`), Pune Metro (`az_pune`), Chennai (`az_chennai`), Kolkata (`az_kolkata`)
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+# ----------------------------------------------------
+# ADMIN SUBPAGE: STORES REGISTRY
+# ----------------------------------------------------
+elif st.session_state.page == "admin_stores":
+    st.markdown("<h2>⌂ Platform Multi-Tenant Stores Registry</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='color: var(--text-sec); font-size: 14px;'>Manage and monitor active store locations and settlement configurations across tenants.</p>", unsafe_allow_html=True)
+    
+    stores_data = [
+        {"Store ID": "fk_delhi", "Merchant": "Flipkart", "City": "Delhi NCR", "Settlement Delay": "T+2 Days", "Status": "OPERATIONAL", "Exceptions": 18},
+        {"Store ID": "fk_mumbai", "Merchant": "Flipkart", "City": "Mumbai West", "Settlement Delay": "T+2 Days", "Status": "OPERATIONAL", "Exceptions": 3},
+        {"Store ID": "fk_bangalore", "Merchant": "Flipkart", "City": "Bangalore Central", "Settlement Delay": "T+2 Days", "Status": "OPERATIONAL", "Exceptions": 1},
+        {"Store ID": "fk_hyderabad", "Merchant": "Flipkart", "City": "Hyderabad Hub", "Settlement Delay": "T+2 Days", "Status": "OPERATIONAL", "Exceptions": 1},
+        {"Store ID": "az_mumbai", "Merchant": "Amazon", "City": "Mumbai South", "Settlement Delay": "T+2 Days", "Status": "OPERATIONAL", "Exceptions": 8},
+        {"Store ID": "az_delhi", "Merchant": "Amazon", "City": "Delhi Central", "Settlement Delay": "T+2 Days", "Status": "OPERATIONAL", "Exceptions": 4},
+        {"Store ID": "az_bangalore", "Merchant": "Amazon", "City": "Bangalore Hub", "Settlement Delay": "T+2 Days", "Status": "OPERATIONAL", "Exceptions": 1},
+        {"Store ID": "az_pune", "Merchant": "Amazon", "City": "Pune Metro", "Settlement Delay": "T+2 Days", "Status": "OPERATIONAL", "Exceptions": 1},
+        {"Store ID": "az_chennai", "Merchant": "Amazon", "City": "Chennai", "Settlement Delay": "T+2 Days", "Status": "OPERATIONAL", "Exceptions": 1},
+        {"Store ID": "az_kolkata", "Merchant": "Amazon", "City": "Kolkata", "Settlement Delay": "T+2 Days", "Status": "OPERATIONAL", "Exceptions": 0},
+    ]
+    st.dataframe(pd.DataFrame(stores_data), use_container_width=True, hide_index=True)
+
+# ----------------------------------------------------
+# ADMIN SUBPAGE: GLOBAL TRANSACTIONS EXPLORER
+# ----------------------------------------------------
+elif st.session_state.page == "admin_transactions":
+    st.markdown("<h2>⇄ Global Transactions Explorer</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='color: var(--text-sec); font-size: 14px;'>Platform-wide transactions ledger with color-coded mismatch classification (Red: Critical/Amount, Yellow: Fee/Tax, Orange: Status, Green: Auto-Resolved).</p>", unsafe_allow_html=True)
+    
+    # Interactive Filters
+    fl_m, fl_stat, fl_type, fl_search = st.columns([1, 1.3, 1, 1.7])
+    with fl_m:
+        m_filter = st.selectbox("Merchant", ["All Merchants", "Flipkart", "Amazon"], key="adm_tx_m_filter")
+    with fl_stat:
+        status_filter = st.selectbox(
+            "Mismatch Type & Status",
+            [
+                "All Transactions",
+                "All Needs Review",
+                "🔴 Critical (Amount / Bank Credit)",
+                "🟡 Fee & Tax Mismatches",
+                "🟠 Status Mismatches",
+                "🟢 Auto-Resolved"
+            ],
+            key="adm_tx_stat_filter"
+        )
+    with fl_type:
+        type_filter = st.selectbox("Type", ["All Types", "PAYMENT", "REFUND", "PAYOUT"], key="adm_tx_type_filter")
+    with fl_search:
+        search_query = st.text_input("Search ID", placeholder="Search pay_xxx or order_xxx...", key="adm_tx_search")
+        
+    display_df = df_tx.copy()
+    
+    if m_filter != "All Merchants":
+        display_df = display_df[display_df['merchant_id'].str.lower() == m_filter.lower()]
+        
+    if status_filter == "🟢 Auto-Resolved":
+        display_df = display_df[display_df['resolution_status'] == 'AUTO_RESOLVED']
+    elif status_filter == "All Needs Review":
+        display_df = display_df[display_df['resolution_status'] == 'NEEDS_REVIEW']
+    elif status_filter == "🔴 Critical (Amount / Bank Credit)":
+        display_df = display_df[
+            (display_df['resolution_status'] == 'NEEDS_REVIEW') & 
+            display_df['calculated_exceptions'].apply(lambda x: any(k in str(x).upper() for k in ['AMOUNT_MISMATCH', 'BANK_CREDIT_MISSING', 'MISSING_ORDER', 'NOT_FOUND', 'DISPUTE']))
+        ]
+    elif status_filter == "🟡 Fee & Tax Mismatches":
+        display_df = display_df[
+            (display_df['resolution_status'] == 'NEEDS_REVIEW') & 
+            display_df['calculated_exceptions'].apply(lambda x: any(k in str(x).upper() for k in ['FEE_MISMATCH', 'TAX_MISMATCH', 'GST_MISMATCH', 'BANK_SETTLEMENT_MISMATCH']))
+        ]
+    elif status_filter == "🟠 Status Mismatches":
+        display_df = display_df[
+            (display_df['resolution_status'] == 'NEEDS_REVIEW') & 
+            display_df['calculated_exceptions'].apply(lambda x: any(k in str(x).upper() for k in ['STATUS_MISMATCH', 'SETTLED_AMOUNT_MISMATCH']))
+        ]
+        
+    if type_filter != "All Types":
+        display_df = display_df[display_df['type'] == type_filter]
+        
+    if search_query.strip():
+        q = search_query.strip().lower()
+        display_df = display_df[
+            display_df['transaction_id'].str.lower().str.contains(q) |
+            display_df['order_id'].str.lower().str.contains(q)
+        ]
+        
+    # Mismatch counts metric cards
+    col_c1, col_c2, col_c3, col_c4, col_c5 = st.columns(5)
+    with col_c1:
+        st.markdown(clean_html(f"""
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 12px;">
+            <div style="font-size: 9.5px; font-weight: 700; color: #6B7C93;">SHOWING</div>
+            <div style="font-size: 16px; font-weight: 800; color: #172B4D;">{len(display_df)}</div>
+        </div>
+        """), unsafe_allow_html=True)
+    with col_c2:
+        crit_c = len(display_df[(display_df['resolution_status'] == 'NEEDS_REVIEW') & display_df['calculated_exceptions'].apply(lambda x: any(k in str(x).upper() for k in ['AMOUNT', 'CREDIT', 'ORDER', 'NOT_FOUND']))])
+        st.markdown(clean_html(f"""
+        <div style="background: #FFF5F5; border: 1px solid #FED7D7; border-radius: 6px; padding: 8px 12px;">
+            <div style="font-size: 9.5px; font-weight: 700; color: #EF4444;">🔴 CRITICAL MISMATCH</div>
+            <div style="font-size: 16px; font-weight: 800; color: #EF4444;">{crit_c}</div>
+        </div>
+        """), unsafe_allow_html=True)
+    with col_c3:
+        fee_c = len(display_df[(display_df['resolution_status'] == 'NEEDS_REVIEW') & display_df['calculated_exceptions'].apply(lambda x: any(k in str(x).upper() for k in ['FEE', 'TAX', 'GST', 'SETTLEMENT']))])
+        st.markdown(clean_html(f"""
+        <div style="background: #FEFCE8; border: 1px solid #FEF08A; border-radius: 6px; padding: 8px 12px;">
+            <div style="font-size: 9.5px; font-weight: 700; color: #D97706;">🟡 FEE/TAX MISMATCH</div>
+            <div style="font-size: 16px; font-weight: 800; color: #D97706;">{fee_c}</div>
+        </div>
+        """), unsafe_allow_html=True)
+    with col_c4:
+        stat_c = len(display_df[(display_df['resolution_status'] == 'NEEDS_REVIEW') & display_df['calculated_exceptions'].apply(lambda x: any(k in str(x).upper() for k in ['STATUS']))])
+        st.markdown(clean_html(f"""
+        <div style="background: #FFF7ED; border: 1px solid #FFEDD5; border-radius: 6px; padding: 8px 12px;">
+            <div style="font-size: 9.5px; font-weight: 700; color: #EA580C;">🟠 STATUS MISMATCH</div>
+            <div style="font-size: 16px; font-weight: 800; color: #EA580C;">{stat_c}</div>
+        </div>
+        """), unsafe_allow_html=True)
+    with col_c5:
+        auto_c = len(display_df[display_df['resolution_status'] == 'AUTO_RESOLVED'])
+        st.markdown(clean_html(f"""
+        <div style="background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 6px; padding: 8px 12px;">
+            <div style="font-size: 9.5px; font-weight: 700; color: #10B981;">🟢 AUTO RESOLVED</div>
+            <div style="font-size: 16px; font-weight: 800; color: #10B981;">{auto_c}</div>
+        </div>
+        """), unsafe_allow_html=True)
+        
+    st.markdown("<div style='margin-top: 12px;'></div>", unsafe_allow_html=True)
+    
+    # Custom HTML Table
+    html_rows = ""
+    for idx, row in display_df.iterrows():
+        tx_id = row['transaction_id']
+        ord_id = row['order_id'] or '—'
+        m_id = str(row['merchant_id']).upper()
+        s_id = str(row['store_id']).split('_')[-1].upper()
+        amt = f"₹{row['amount_inr']:,.2f}"
+        fee = f"₹{row['fee_inr']:,.2f}"
+        tax = f"₹{row['tax_inr']:,.2f}"
+        net = f"₹{row['settled_amount_inr']:,.2f}"
+        
+        status_badge = get_mismatch_badge_html(row['calculated_exceptions'], row['resolution_status'])
+        exc_pills = get_exception_pills_html(row['calculated_exceptions'])
+        
+        html_rows += f"""<tr>
+<td><code>{tx_id}</code></td>
+<td><code>{ord_id}</code></td>
+<td><span style="font-weight: 600; color: #172B4D;">{m_id}</span> <span style="font-size: 10px; color: #6B7C93;">({s_id})</span></td>
+<td><strong>{row['type']}</strong></td>
+<td><strong style="color: #172B4D;">{amt}</strong></td>
+<td style="color: #6B7C93;">{fee}</td>
+<td style="color: #6B7C93;">{tax}</td>
+<td style="font-weight: 600; color: #172B4D;">{net}</td>
+<td>{status_badge}</td>
+<td>{exc_pills}</td>
+</tr>"""
+        
+    if not html_rows:
+        html_rows = "<tr><td colspan='10' style='text-align: center; color: #6B7C93; padding: 20px;'>No transactions found matching the selected filters.</td></tr>"
+        
+    st.markdown(clean_html(f"""
+    <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 14px; overflow-x: auto; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
+        <table class="admin-table" style="width: 100%; border-collapse: collapse; font-size: 11px;">
+            <thead>
+                <tr style="border-bottom: 1px solid #E2E8F0;">
+                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Transaction ID</th>
+                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Order ID</th>
+                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Merchant / Store</th>
+                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Type</th>
+                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Gross Amount</th>
+                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Fee</th>
+                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Tax</th>
+                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Settled Net</th>
+                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Resolution Status</th>
+                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Calculated Exceptions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {html_rows}
+            </tbody>
+        </table>
+    </div>
+    """), unsafe_allow_html=True)
+    
+    st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+    st.download_button(
+        "📥 Export Filtered Ledger (CSV)",
+        data=display_df.to_csv(index=False),
+        file_name="global_transactions_ledger.csv",
+        mime="text/csv"
+    )
+
+# ----------------------------------------------------
+# ADMIN SUBPAGE: RECONCILIATION COMMAND CENTER
+# ----------------------------------------------------
+elif st.session_state.page == "admin_reconciliation":
+    st.markdown("<h2>⇄ Platform 3-Way Reconciliation Ledger</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='color: var(--text-sec); font-size: 14px;'>Global matching engine status across Razorpay Gateway, OMS Orders, and Bank Settlement Feeds with colored mismatch resolution badges.</p>", unsafe_allow_html=True)
+    
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        st.metric("Total Payments", f"{len(df_tx):,}")
+    with c2:
+        st.metric("Auto Resolved", f"{metrics.get('auto_resolved_count', 84):,}")
+    with c3:
+        st.metric("Review Required", f"{metrics.get('needs_review_count', 38):,}")
+    with c4:
+        st.metric("Auto Match Accuracy", f"{metrics.get('auto_match_accuracy_pct', 68.9)}%")
+        
+    html_rec_rows = ""
+    for idx, row in df_tx.iterrows():
+        tx_id = row['transaction_id']
+        m_id = str(row['merchant_id']).upper()
+        s_id = str(row['store_id']).split('_')[-1].upper()
+        amt = f"₹{row['amount_inr']:,.2f}"
+        status_badge = get_mismatch_badge_html(row['calculated_exceptions'], row['resolution_status'])
+        exc_pills = get_exception_pills_html(row['calculated_exceptions'])
+        
+        html_rec_rows += f"""<tr>
+<td><code>{tx_id}</code></td>
+<td><strong>{m_id}</strong> <span style="font-size: 10px; color: #6B7C93;">({s_id})</span></td>
+<td><strong style="color: #172B4D;">{amt}</strong></td>
+<td>{status_badge}</td>
+<td>{exc_pills}</td>
+</tr>"""
+        
+    st.markdown(clean_html(f"""
+    <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 14px; overflow-x: auto; margin-top: 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
+        <table class="admin-table" style="width: 100%; border-collapse: collapse; font-size: 11px;">
+            <thead>
+                <tr style="border-bottom: 1px solid #E2E8F0;">
+                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Transaction ID</th>
+                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Merchant / Store</th>
+                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Amount</th>
+                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Resolution Status</th>
+                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Calculated Exceptions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {html_rec_rows}
+            </tbody>
+        </table>
+    </div>
+    """), unsafe_allow_html=True)
+
+# ----------------------------------------------------
+# ADMIN SUBPAGE: SETTLEMENTS & CLEARING
+# ----------------------------------------------------
+elif st.session_state.page == "admin_settlements":
+    st.markdown("<h2>▣ Platform Settlements & Clearing Batches</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='color: var(--text-sec); font-size: 14px;'>Nodal clearing ledger, expected vs actual bank settlement transfers, and UTR reference mappings.</p>", unsafe_allow_html=True)
+    
+    # Filters
+    fl_m, fl_stat, fl_search = st.columns([1, 1.2, 1.8])
+    with fl_m:
+        m_filter = st.selectbox("Merchant", ["All Merchants", "Flipkart", "Amazon"], key="adm_settle_m_filter")
+    with fl_stat:
+        status_filter = st.selectbox("Batch Status", ["All Batches", "Matched Deposits", "Variances / Mismatches"], key="adm_settle_stat_filter")
+    with fl_search:
+        search_query = st.text_input("Search Reference", placeholder="Search UTR / Bank Reference or Date...", key="adm_settle_search")
+        
+    display_bank = df_bank.copy()
+    if m_filter != "All Merchants" and 'merchant_id' in display_bank.columns:
+        display_bank = display_bank[display_bank['merchant_id'].str.lower() == m_filter.lower()]
+        
+    if status_filter == "Matched Deposits":
+        if 'difference' in display_bank.columns:
+            display_bank = display_bank[display_bank['difference'].abs() < 0.01]
+        elif 'expected_amount_inr' in display_bank.columns:
+            display_bank = display_bank[(display_bank['expected_amount_inr'] - display_bank['amount_inr']).abs() < 0.01]
+    elif status_filter == "Variances / Mismatches":
+        if 'difference' in display_bank.columns:
+            display_bank = display_bank[display_bank['difference'].abs() >= 0.01]
+        elif 'expected_amount_inr' in display_bank.columns:
+            display_bank = display_bank[(display_bank['expected_amount_inr'] - display_bank['amount_inr']).abs() >= 0.01]
+            
+    if search_query.strip():
+        q = search_query.strip().lower()
+        display_bank = display_bank[
+            display_bank['bank_reference'].astype(str).str.lower().str.contains(q) |
+            display_bank['date'].astype(str).str.lower().str.contains(q)
+        ]
+        
+    # Stats Cards Row
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        st.markdown(clean_html(f"""
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 10px 14px;">
+            <div style="font-size: 9.5px; font-weight: 700; color: #6B7C93;">TOTAL CLEARING BATCHES</div>
+            <div style="font-size: 17px; font-weight: 800; color: #172B4D;">{len(display_bank)}</div>
+        </div>
+        """), unsafe_allow_html=True)
+    with c2:
+        exp_sum = display_bank['expected_amount_inr'].sum() if 'expected_amount_inr' in display_bank.columns else 0
+        st.markdown(clean_html(f"""
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 10px 14px;">
+            <div style="font-size: 9.5px; font-weight: 700; color: #6B7C93;">EXPECTED NET TRANSFER</div>
+            <div style="font-size: 17px; font-weight: 800; color: #2563EB;">₹{exp_sum:,.2f}</div>
+        </div>
+        """), unsafe_allow_html=True)
+    with c3:
+        act_sum = display_bank['amount_inr'].sum() if 'amount_inr' in display_bank.columns else 0
+        st.markdown(clean_html(f"""
+        <div style="background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 6px; padding: 10px 14px;">
+            <div style="font-size: 9.5px; font-weight: 700; color: #10B981;">CONFIRMED CLEARED</div>
+            <div style="font-size: 17px; font-weight: 800; color: #10B981;">₹{act_sum:,.2f}</div>
+        </div>
+        """), unsafe_allow_html=True)
+    with c4:
+        diff_total = (display_bank['expected_amount_inr'] - display_bank['amount_inr']).sum() if 'expected_amount_inr' in display_bank.columns else 0
+        diff_color = "#EF4444" if abs(diff_total) > 0.01 else "#10B981"
+        diff_bg = "#FFF5F5" if abs(diff_total) > 0.01 else "#F0FDF4"
+        diff_border = "#FED7D7" if abs(diff_total) > 0.01 else "#BBF7D0"
+        st.markdown(clean_html(f"""
+        <div style="background: {diff_bg}; border: 1px solid {diff_border}; border-radius: 6px; padding: 10px 14px;">
+            <div style="font-size: 9.5px; font-weight: 700; color: {diff_color};">TOTAL VARIANCE / DELTA</div>
+            <div style="font-size: 17px; font-weight: 800; color: {diff_color};">₹{diff_total:,.2f}</div>
+        </div>
+        """), unsafe_allow_html=True)
+        
+    st.markdown("<div style='margin-top: 14px;'></div>", unsafe_allow_html=True)
+    
+    # Custom HTML Table
+    html_settle_rows = ""
+    for idx, row in display_bank.iterrows():
+        dt = row.get('date', '—')
+        m_id = str(row.get('merchant_id', 'flipkart')).upper()
+        s_id = str(row.get('store_id', 'main')).split('_')[-1].upper()
+        exp_amt = row.get('expected_amount_inr', row.get('amount_inr', 0.0))
+        act_amt = row.get('amount_inr', 0.0)
+        diff = exp_amt - act_amt
+        
+        bank_ref = str(row.get('bank_reference', '—'))
+        if ";" in bank_ref:
+            refs = [r.strip() for r in bank_ref.split(";") if r.strip()]
+            ref_display = f"<code>{refs[0]}</code> + {len(refs)-1} more"
+        else:
+            ref_display = f"<code>{bank_ref}</code>"
+            
+        if abs(diff) < 0.01:
+            status_pill = '<span style="background-color: #ECFDF5; color: #10B981; border: 1px solid #A7F3D0; padding: 2px 7px; border-radius: 4px; font-size: 10.5px; font-weight: 700;">✓ CLEARED</span>'
+            diff_pill = '<span style="color: #10B981; font-weight: 600;">₹0.00</span>'
+        else:
+            status_pill = '<span style="background-color: #FEE2E2; color: #EF4444; border: 1px solid #FECACA; padding: 2px 7px; border-radius: 4px; font-size: 10.5px; font-weight: 700;">⚠️ MISMATCH</span>'
+            diff_pill = f'<span style="color: #EF4444; font-weight: 700;">₹{diff:,.2f}</span>'
+            
+        amt_color = "#172B4D" if act_amt >= 0 else "#EF4444"
+        
+        html_settle_rows += f"""<tr>
+<td><strong>{dt}</strong></td>
+<td><span style="font-weight: 600; color: #172B4D;">{m_id}</span> <span style="font-size: 10px; color: #6B7C93;">({s_id})</span></td>
+<td style="color: #6B7C93; font-weight: 600;">₹{exp_amt:,.2f}</td>
+<td style="color: {amt_color}; font-weight: 700;">₹{act_amt:,.2f}</td>
+<td>{diff_pill}</td>
+<td>{status_pill}</td>
+<td style="color: #475569; font-size: 10.5px;">{ref_display}</td>
+</tr>"""
+        
+    if not html_settle_rows:
+        html_settle_rows = "<tr><td colspan='7' style='text-align: center; color: #6B7C93; padding: 20px;'>No settlement records found matching filters.</td></tr>"
+        
+    st.markdown(clean_html(f"""
+    <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 14px; overflow-x: auto; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
+        <table class="admin-table" style="width: 100%; border-collapse: collapse; font-size: 11px;">
+            <thead>
+                <tr style="border-bottom: 1px solid #E2E8F0;">
+                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Clearing Date</th>
+                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Merchant / Store</th>
+                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Expected Transfer</th>
+                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Actual Cleared Amount</th>
+                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Variance / Delta</th>
+                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Batch Status</th>
+                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Bank Reference / UTR</th>
+                </tr>
+            </thead>
+            <tbody>
+                {html_settle_rows}
+            </tbody>
+        </table>
+    </div>
+    """), unsafe_allow_html=True)
+    
+    st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+    st.download_button(
+        "📥 Export Settlements Ledger (CSV)",
+        data=display_bank.to_csv(index=False),
+        file_name="platform_settlements_ledger.csv",
+        mime="text/csv"
+    )
+
+# ----------------------------------------------------
+# ADMIN SUBPAGE: PAYOUTS & BALANCES
+# ----------------------------------------------------
+elif st.session_state.page == "admin_payouts":
+    st.markdown("<h2>⇄ Platform Merchant Payouts & Net Balances</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='color: var(--text-sec); font-size: 14px;'>Withholding TDS calculations, merchant disbursement queues, and platform net settlement transfers.</p>", unsafe_allow_html=True)
+    
+    payout_df = df_tx[df_tx['type'] == 'PAYMENT'].copy()
+    
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.markdown(clean_html(f"""
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 10px 14px;">
+            <div style="font-size: 9.5px; font-weight: 700; color: #6B7C93;">TOTAL PAYOUT VOLUME</div>
+            <div style="font-size: 17px; font-weight: 800; color: #172B4D;">₹{payout_df['amount_inr'].sum():,.2f}</div>
+        </div>
+        """), unsafe_allow_html=True)
+    with c2:
+        fee_sum = payout_df['fee_inr'].sum() + payout_df['tax_inr'].sum()
+        st.markdown(clean_html(f"""
+        <div style="background: #FEFCE8; border: 1px solid #FEF08A; border-radius: 6px; padding: 10px 14px;">
+            <div style="font-size: 9.5px; font-weight: 700; color: #D97706;">WITHHELD FEES & GST</div>
+            <div style="font-size: 17px; font-weight: 800; color: #D97706;">₹{fee_sum:,.2f}</div>
+        </div>
+        """), unsafe_allow_html=True)
+    with c3:
+        net_sum = payout_df['settled_amount_inr'].sum()
+        st.markdown(clean_html(f"""
+        <div style="background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 6px; padding: 10px 14px;">
+            <div style="font-size: 9.5px; font-weight: 700; color: #10B981;">NET MERCHANT DISBURSEMENT</div>
+            <div style="font-size: 17px; font-weight: 800; color: #10B981;">₹{net_sum:,.2f}</div>
+        </div>
+        """), unsafe_allow_html=True)
+        
+    st.markdown("<div style='margin-top: 14px;'></div>", unsafe_allow_html=True)
+    
+    html_payout_rows = ""
+    for idx, row in payout_df.iterrows():
+        tx_id = row['transaction_id']
+        m_id = str(row['merchant_id']).upper()
+        s_id = str(row['store_id']).split('_')[-1].upper()
+        gross = f"₹{row['amount_inr']:,.2f}"
+        fee = f"₹{row['fee_inr']:,.2f}"
+        tax = f"₹{row['tax_inr']:,.2f}"
+        net = f"₹{row['settled_amount_inr']:,.2f}"
+        date_exp = row.get('expected_settlement_date', 'T+2 Days')
+        
+        html_payout_rows += f"""<tr>
+<td><code>{tx_id}</code></td>
+<td><strong>{m_id}</strong> <span style="font-size: 10px; color: #6B7C93;">({s_id})</span></td>
+<td style="font-weight: 700; color: #172B4D;">{gross}</td>
+<td style="color: #6B7C93;">{fee}</td>
+<td style="color: #6B7C93;">{tax}</td>
+<td style="font-weight: 700; color: #10B981;">{net}</td>
+<td><span style="background-color: #EFF6FF; color: #3B82F6; border: 1px solid #BFDBFE; padding: 2px 7px; border-radius: 4px; font-size: 10.5px; font-weight: 600;">{date_exp}</span></td>
+</tr>"""
+        
+    st.markdown(clean_html(f"""
+    <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 14px; overflow-x: auto; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
+        <table class="admin-table" style="width: 100%; border-collapse: collapse; font-size: 11px;">
+            <thead>
+                <tr style="border-bottom: 1px solid #E2E8F0;">
+                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Transaction ID</th>
+                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Merchant / Store</th>
+                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Gross Collected</th>
+                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Fee (2%)</th>
+                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">GST (18%)</th>
+                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Net Payable</th>
+                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Disbursement Target</th>
+                </tr>
+            </thead>
+            <tbody>
+                {html_payout_rows}
+            </tbody>
+        </table>
+    </div>
+    """), unsafe_allow_html=True)
+
+# ----------------------------------------------------
+# ADMIN SUBPAGE: NOTIFICATIONS HUB
+# ----------------------------------------------------
+elif st.session_state.page == "admin_notifications":
+    st.markdown("<h2>♧ Platform Security & Compliance Notifications</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='color: var(--text-sec); font-size: 14px;'>Active platform alerts, webhook triggers, and compliance reminders.</p>", unsafe_allow_html=True)
+    
+    from src.database import get_notifications
+    notifs = get_notifications(role='ADMIN')
+    if notifs:
+        for n in notifs:
+            st.markdown(f"""
+            <div class="admin-card" style="margin-bottom: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <strong>{n.get('title', 'System Notification')}</strong>
+                    <span style="font-size: 11.5px; color: #6B7C93;">{n.get('created_at', '')}</span>
+                </div>
+                <p style="margin: 6px 0 0 0; font-size: 13px; color: #172B4D;">{n.get('message', '')}</p>
+            </div>
+            """, unsafe_allow_html=True)
+    else:
+        st.info("No unread admin security alerts.")
+
+# ----------------------------------------------------
+# ADMIN SUBPAGE: KNOWLEDGE BASE & VECTOR REPOSITORY
+# ----------------------------------------------------
+elif st.session_state.page == "admin_kb":
+    st.markdown("<h2>▤ RAG Knowledge Base Document Repository</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='color: var(--text-sec); font-size: 14px;'>Indexed fintech documents, Section 194-O guidelines, and vector chunks.</p>", unsafe_allow_html=True)
+    
+    from src.database import get_indexed_documents
+    docs = get_indexed_documents()
+    if docs:
+        st.dataframe(pd.DataFrame(docs), use_container_width=True, hide_index=True)
+    else:
+        st.info("No documents indexed yet in vector database.")
 
 # ----------------------------------------------------
 # FLOATING AI ASSISTANT SPARKS OVERLAY (META AI STYLE)
