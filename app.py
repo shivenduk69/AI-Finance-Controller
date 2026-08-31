@@ -24,6 +24,10 @@ from src.database import (
 )
 from src.rag_engine import retrieve_relevant_context, build_document_index
 
+def clean_html(html_str):
+    """Strips all leading and trailing whitespace and removes newlines to guarantee no Markdown code block triggers."""
+    return "".join([line.strip() for line in html_str.splitlines() if line.strip()])
+
 def get_august_25_example_data(merchant_id="flipkart", store_id="fk_delhi"):
     """Returns the exact numbers/exceptions for the user's August 25 example."""
     summary = {
@@ -307,10 +311,11 @@ if "sys_tds_config" not in st.session_state:
 
 # Read potential URL query parameters for direct page linking (e.g. from table action buttons)
 query_params = st.query_params
-if "page" in query_params:
-    st.session_state.page = query_params["page"]
 if "audit_tx" in query_params:
     st.session_state.audit_tx = query_params["audit_tx"]
+    st.session_state.page = "transactions"
+elif "page" in query_params:
+    st.session_state.page = query_params["page"]
 if "explain_tx" in query_params:
     st.session_state.explain_tx = query_params["explain_tx"]
 if "admin_page" in query_params:
@@ -334,7 +339,13 @@ if "logged_in" not in st.session_state or not st.session_state.logged_in:
         if user:
             st.session_state.logged_in = True
             st.session_state.user = user
-            st.session_state.page = "dashboard" if user['role'] == 'MERCHANT' else "admin"
+            if "audit_tx" in query_params:
+                st.session_state.page = "transactions"
+                st.session_state.audit_tx = query_params["audit_tx"]
+            elif "page" in query_params:
+                st.session_state.page = query_params["page"]
+            else:
+                st.session_state.page = "dashboard" if user['role'] == 'MERCHANT' else "admin"
             st.session_state.messages = []
 
 if "logged_in" not in st.session_state:
@@ -343,126 +354,282 @@ if "user" not in st.session_state:
     st.session_state.user = None
 
 if not st.session_state.logged_in:
-    # Render Login Page
-    st.markdown("""
+    # Base64 encode logo.png for branding
+    import base64
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    logo_path = os.path.join(base_dir, "logo.png")
+    logo_base64 = ""
+    if os.path.exists(logo_path):
+        with open(logo_path, "rb") as logo_file:
+            logo_base64 = base64.b64encode(logo_file.read()).decode("utf-8")
+
+    # Render Split-Screen Login Page
+    st.markdown(f"""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap');
         
-        .login-wrapper {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 80vh;
-            font-family: 'Inter', sans-serif;
-            background-color: #F7F9FC;
-        }
-        .login-card {
-            width: 100%;
-            max-width: 440px;
-            padding: 40px;
-            background: #FFFFFF;
-            border-radius: 16px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.04);
-            border: 1px solid #E2E8F0;
-            text-align: center;
-        }
-        .login-logo {
-            display: inline-flex;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 24px;
-        }
-        .login-title {
-            font-family: 'Outfit', sans-serif;
-            font-size: 1.75rem;
-            font-weight: 800;
-            color: #172B4D;
-            margin-bottom: 6px;
-            letter-spacing: -0.5px;
-        }
-        .login-subtitle {
-            font-size: 0.95rem;
-            color: #6B7C93;
-            margin-bottom: 32px;
-        }
-        .info-box {
-            background-color: #F0F4FA;
-            border-left: 4px solid #3b82f6;
-            color: #1e3a8a;
-            padding: 12px;
-            border-radius: 4px;
-            margin-top: 15px;
-            font-size: 0.85rem;
-            text-align: left;
-        }
+        /* Reset Streamlit header, toolbar, sidebar for login */
+        header[data-testid="stHeader"] {{ display: none !important; }}
+        section[data-testid="stSidebar"] {{ display: none !important; }}
+        div[data-testid="stToolbar"] {{ display: none !important; }}
+        .main .block-container {{
+            padding: 24px 32px !important;
+            max-width: 100% !important;
+            margin: 0 auto !important;
+        }}
+        
+        /* Right column login container card */
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(button[key="login_submit_btn"]) {{
+            background: #FFFFFF !important;
+            border: 1px solid #E2E8F0 !important;
+            border-radius: 16px !important;
+            padding: 40px 44px 32px 44px !important;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.03) !important;
+            max-width: 480px !important;
+            margin: auto !important;
+        }}
+        
+        /* Input overrides for login form */
+        div[data-baseweb="input"] {{
+            border: 1px solid #DDE3EA !important;
+            border-radius: 10px !important;
+            background: #FFFFFF !important;
+            height: 46px !important;
+            transition: all 0.2s ease !important;
+        }}
+        div[data-baseweb="input"]:focus-within {{
+            border-color: #1769E0 !important;
+            box-shadow: 0 0 0 3px rgba(23, 105, 224, 0.15) !important;
+        }}
+        
+        /* Secure Login Button */
+        div[data-testid="stButton"] button[key="login_submit_btn"] {{
+            background: #1769E0 !important;
+            color: #FFFFFF !important;
+            border: none !important;
+            border-radius: 10px !important;
+            font-weight: 700 !important;
+            font-size: 15px !important;
+            height: 50px !important;
+            box-shadow: 0 2px 8px rgba(23, 105, 224, 0.25) !important;
+            transition: all 0.2s ease !important;
+            margin-top: 6px !important;
+        }}
+        div[data-testid="stButton"] button[key="login_submit_btn"]:hover {{
+            background: #1558BD !important;
+            transform: translateY(-1px) !important;
+        }}
+        
+        /* Forgot Password button link */
+        div[data-testid="stButton"] button[key="login_forgot_btn"] {{
+            background: transparent !important;
+            color: #1769E0 !important;
+            border: none !important;
+            font-weight: 600 !important;
+            font-size: 13.5px !important;
+            height: auto !important;
+            padding: 8px !important;
+            box-shadow: none !important;
+            margin: 4px auto 0 auto !important;
+            display: block !important;
+        }}
+        div[data-testid="stButton"] button[key="login_forgot_btn"]:hover {{
+            text-decoration: underline !important;
+            background: transparent !important;
+        }}
     </style>
     """, unsafe_allow_html=True)
     
-    st.markdown('<div class="login-wrapper">', unsafe_allow_html=True)
-    st.markdown('<div class="login-card">', unsafe_allow_html=True)
+    col_l, col_r = st.columns([1.08, 1.25], gap="large")
     
-    # Logo and Titles
-    st.markdown('''
-    <div class="login-logo">
-        <div style="width: 42px; height: 42px; border-radius: 10px; background-color: #0F4C75; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 22px; font-family: \'Outfit\', sans-serif;">
-            R
-        </div>
-        <div style="display: flex; flex-direction: column; font-family: \'Outfit\', sans-serif; text-align: left;">
-            <span style="color: #172B4D; font-weight: 800; font-size: 1.35rem; line-height: 1.1; letter-spacing: -0.3px;">Razorpay</span>
-            <span style="color: #6B7C93; font-weight: 600; font-size: 0.8rem; letter-spacing: 0.5px;">FINANCE PLATFORM</span>
-        </div>
-    </div>
-    <div class="login-title">Sign In</div>
-    <div class="login-subtitle">Access your merchant or admin control dashboard</div>
-    ''', unsafe_allow_html=True)
-    
-    # Inputs
-    email = st.text_input("Corporate Email Address", placeholder="flipkart.delhi@merchant-demo.com", key="login_email")
-    password = st.text_input("Password", type="password", placeholder="••••••••", key="login_pass")
-    
-    st.markdown('<div style="font-family: \'Inter\', sans-serif; text-align: left; margin-bottom: 20px; font-size: 0.8rem; color: #6B7C93;">Predefined credentials for demo in README.</div>', unsafe_allow_html=True)
-    
-    col_sub_btn, col_sub_forgot = st.columns([1.3, 1])
-    with col_sub_btn:
-        login_clicked = st.button("Secure Login 🔒", use_container_width=True, key="login_submit_btn")
-    with col_sub_forgot:
-        forgot_clicked = st.button("Forgot Password?", use_container_width=True, key="login_forgot_btn")
-        
-    if login_clicked:
-        if email.strip() and password.strip():
-            from src.database import authenticate_user, log_action
-            user = authenticate_user(email.strip(), password.strip())
-            if user:
-                st.session_state.logged_in = True
-                st.session_state.user = user
-                st.session_state.page = "dashboard" if user['role'] == 'MERCHANT' else "admin"
-                st.session_state.messages = []  # Clear chat
-                log_action(user['user_id'], "User Login", f"Successful login. Role: {user['role']}, Merchant: {user['merchant_id']}, Store: {user['store_id']}")
-                st.toast(f"Logged in successfully as {email}!", icon="\u2705")
-                from src.database import create_user_session
-                session_token = create_user_session(user['user_id'])
-                import streamlit.components.v1 as components
-                components.html(f"""
-                <script>
-                    const expires = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toUTCString();
-                    window.parent.document.cookie = "session_token={session_token}; path=/; expires=" + expires + "; SameSite=Lax";
-                    window.parent.location.reload();
-                </script>
-                """, height=0, width=0)
-                st.stop()
-            else:
-                st.error("Authentication failed. Invalid email or password.")
-        else:
-            st.warning("Please enter your email and password.")
+    with col_l:
+        st.markdown(clean_html(f"""
+        <div style="background: linear-gradient(180deg, #061A41 0%, #030F28 100%); padding: 42px 38px 30px 38px; border-radius: 16px; min-height: 520px; display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box; position: relative;">
+            <div>
+                <!-- Top App Logo -->
+                <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 24px;">
+                    <img src="data:image/png;base64,{logo_base64}" style="width: 48px; height: 48px; border-radius: 10px; object-fit: cover;">
+                    <div style="display: flex; flex-direction: column; font-family: 'Outfit', sans-serif;">
+                        <span style="color: #FFFFFF; font-weight: 800; font-size: 1.45rem; line-height: 1.1; letter-spacing: -0.3px;">AI Finance</span>
+                        <span style="color: #94A3B8; font-weight: 600; font-size: 0.95rem; letter-spacing: 0.5px;">Controller</span>
+                    </div>
+                </div>
+                
+                <!-- Taglines -->
+                <h1 style="color: #FFFFFF; font-family: 'Outfit', sans-serif; font-size: 20px; font-weight: 800; line-height: 1.3; margin: 0 0 8px 0;">
+                    Intelligent Finance. Automated Reconciliation.
+                </h1>
+                <p style="color: #94A3B8; font-size: 13px; line-height: 1.5; margin: 0 0 24px 0; font-weight: 400;">
+                    AI-powered reconciliation, exception management, and financial insights for modern businesses.
+                </p>
+                
+                <!-- 3 Feature Highlight Blocks -->
+                <div style="display: flex; flex-direction: column; gap: 16px;">
+                    <div style="display: flex; align-items: flex-start; gap: 14px;">
+                        <div style="width: 36px; height: 36px; border-radius: 8px; background-color: #0E2554; border: 1px solid rgba(255, 255, 255, 0.08); display: flex; align-items: center; justify-content: center; color: #38BDF8; font-size: 15px; flex-shrink: 0;">✦</div>
+                        <div>
+                            <div style="color: #FFFFFF; font-weight: 700; font-size: 13px; margin-bottom: 2px;">AI-Powered Insights</div>
+                            <div style="color: #94A3B8; font-size: 11.5px; line-height: 1.35;">Get intelligent explanations and actionable recommendations.</div>
+                        </div>
+                    </div>
+                    
+                    <div style="display: flex; align-items: flex-start; gap: 14px;">
+                        <div style="width: 36px; height: 36px; border-radius: 8px; background-color: #0E2554; border: 1px solid rgba(255, 255, 255, 0.08); display: flex; align-items: center; justify-content: center; color: #3B82F6; font-size: 15px; flex-shrink: 0;">🛡️</div>
+                        <div>
+                            <div style="color: #FFFFFF; font-weight: 700; font-size: 13px; margin-bottom: 2px;">Smart Reconciliation</div>
+                            <div style="color: #94A3B8; font-size: 11.5px; line-height: 1.35;">Automated matching with high accuracy and exception detection.</div>
+                        </div>
+                    </div>
+                    
+                    <div style="display: flex; align-items: flex-start; gap: 14px;">
+                        <div style="width: 36px; height: 36px; border-radius: 8px; background-color: #0E2554; border: 1px solid rgba(255, 255, 255, 0.08); display: flex; align-items: center; justify-content: center; color: #10B981; font-size: 15px; flex-shrink: 0;">📈</div>
+                        <div>
+                            <div style="color: #FFFFFF; font-weight: 700; font-size: 13px; margin-bottom: 2px;">Real-time Visibility</div>
+                            <div style="color: #94A3B8; font-size: 11.5px; line-height: 1.35;">Track settlements, payouts, and financial health in real-time.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
             
-    if forgot_clicked:
-        st.markdown('''
-        <div class="info-box">
-            <strong>🔒 Enterprise Recovery Protocol:</strong> Self-service reset is disabled. Please raise a password recovery ticket or contact your Razorpay Administrator.
+            <!-- Bottom Fintech Visualization & Footer -->
+            <div>
+                <div style="position: relative; width: 100%; height: 150px; margin-top: 16px;">
+                    <!-- SVG Chart -->
+                    <svg viewBox="0 0 380 150" width="100%" height="150" style="overflow: visible;">
+                      <defs>
+                        <linearGradient id="barGrad1" x1="0%" y1="0%" x2="0%" y2="100%">
+                          <stop offset="0%" stop-color="#1E40AF" stop-opacity="0.9"/>
+                          <stop offset="100%" stop-color="#0F2757" stop-opacity="0.3"/>
+                        </linearGradient>
+                        <linearGradient id="barGrad2" x1="0%" y1="0%" x2="0%" y2="100%">
+                          <stop offset="0%" stop-color="#2563EB" stop-opacity="0.9"/>
+                          <stop offset="100%" stop-color="#1E3A8A" stop-opacity="0.3"/>
+                        </linearGradient>
+                        <linearGradient id="barGrad3" x1="0%" y1="0%" x2="0%" y2="100%">
+                          <stop offset="0%" stop-color="#3B82F6" stop-opacity="0.9"/>
+                          <stop offset="100%" stop-color="#1D4ED8" stop-opacity="0.3"/>
+                        </linearGradient>
+                        <linearGradient id="lineGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                          <stop offset="0%" stop-color="#00D2FF"/>
+                          <stop offset="60%" stop-color="#38BDF8"/>
+                          <stop offset="100%" stop-color="#10B981"/>
+                        </linearGradient>
+                        <linearGradient id="areaGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                          <stop offset="0%" stop-color="#00D2FF" stop-opacity="0.25"/>
+                          <stop offset="100%" stop-color="#00D2FF" stop-opacity="0.0"/>
+                        </linearGradient>
+                        <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+                          <feGaussianBlur stdDeviation="3" result="blur" />
+                          <feMerge>
+                            <feMergeNode in="blur" />
+                            <feMergeNode in="SourceGraphic" />
+                          </feMerge>
+                        </filter>
+                      </defs>
+                      <line x1="10" y1="35" x2="370" y2="35" stroke="#1E293B" stroke-dasharray="3,3" stroke-width="1" opacity="0.6"/>
+                      <line x1="10" y1="80" x2="370" y2="80" stroke="#1E293B" stroke-dasharray="3,3" stroke-width="1" opacity="0.6"/>
+                      <line x1="10" y1="125" x2="370" y2="125" stroke="#1E293B" stroke-dasharray="3,3" stroke-width="1" opacity="0.6"/>
+                      <rect x="25" y="115" width="22" height="30" rx="3" fill="url(#barGrad1)"/>
+                      <rect x="65" y="100" width="22" height="45" rx="3" fill="url(#barGrad1)"/>
+                      <rect x="105" y="85" width="22" height="60" rx="3" fill="url(#barGrad2)"/>
+                      <rect x="145" y="70" width="22" height="75" rx="3" fill="url(#barGrad2)"/>
+                      <rect x="185" y="55" width="22" height="90" rx="3" fill="url(#barGrad2)"/>
+                      <rect x="225" y="40" width="22" height="105" rx="3" fill="url(#barGrad3)"/>
+                      <rect x="265" y="50" width="22" height="95" rx="3" fill="url(#barGrad2)"/>
+                      <rect x="305" y="25" width="22" height="120" rx="3" fill="url(#barGrad3)"/>
+                      <path d="M 15,120 C 50,110 90,130 130,95 C 165,65 205,105 245,55 C 280,25 310,40 350,25 L 350,145 L 15,145 Z" fill="url(#areaGrad)"/>
+                      <path d="M 15,120 C 50,110 90,130 130,95 C 165,65 205,105 245,55 C 280,25 310,40 350,25" fill="none" stroke="url(#lineGrad)" stroke-width="3" filter="url(#glow)"/>
+                      <circle cx="130" cy="95" r="4.5" fill="#00D2FF" filter="url(#glow)"/>
+                      <circle cx="130" cy="95" r="2" fill="#FFFFFF"/>
+                      <circle cx="315" cy="28" r="4.5" fill="#10B981" filter="url(#glow)"/>
+                      <circle cx="315" cy="28" r="2" fill="#FFFFFF"/>
+                    </svg>
+                    
+                    <!-- Floating Pill 1 -->
+                    <div style="position: absolute; bottom: 65px; left: 80px; background: rgba(11, 34, 78, 0.9); border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 6px; padding: 4px 8px; backdrop-filter: blur(4px); box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                        <div style="color: #FFFFFF; font-size: 10.5px; font-weight: 700; font-family: 'Outfit', sans-serif;">₹18,308.44</div>
+                        <div style="color: #94A3B8; font-size: 8px;">Settled Today</div>
+                    </div>
+                    
+                    <!-- Floating Pill 2 -->
+                    <div style="position: absolute; top: 12px; right: 25px; background: rgba(11, 34, 78, 0.9); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 6px; padding: 4px 8px; backdrop-filter: blur(4px); box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                        <div style="color: #FFFFFF; font-size: 10.5px; font-weight: 700; font-family: 'Outfit', sans-serif;">83.3%</div>
+                        <div style="color: #10B981; font-size: 8px; font-weight: 600;">Reconciled</div>
+                    </div>
+                </div>
+                
+                <!-- Footer -->
+                <div style="font-size: 11px; color: #64748B; margin-top: 14px; display: flex; align-items: center; gap: 8px;">
+                    <span>🔒 Secure</span>
+                    <span>•</span>
+                    <span>Compliant</span>
+                    <span>•</span>
+                    <span>Trusted by Leading Businesses</span>
+                </div>
+            </div>
         </div>
-        ''', unsafe_allow_html=True)
-        
-    st.markdown('</div></div>', unsafe_allow_html=True)
+        """), unsafe_allow_html=True)
+
+    with col_r:
+        st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
+        with st.container(border=True):
+            # Sign In Title & Subtitle matching reference
+            st.markdown(clean_html("""
+            <div style="margin-bottom: 22px;">
+                <div style="font-family: 'Outfit', sans-serif; font-size: 1.85rem; font-weight: 800; color: #172B4D; margin: 0 0 6px 0; letter-spacing: -0.5px;">Sign In</div>
+                <div style="font-size: 0.92rem; color: #6B7C93; margin: 0;">Access your merchant or admin control dashboard</div>
+            </div>
+            """), unsafe_allow_html=True)
+            
+            # Form Inputs
+            email = st.text_input("Corporate Email Address", placeholder="example@merchant.com", key="login_email")
+            password = st.text_input("Password", type="password", placeholder="••••••••••••", key="login_pass")
+            
+            st.markdown(clean_html("""
+            <div style="background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 8px; padding: 10px 14px; display: flex; align-items: center; gap: 8px; color: #2563EB; font-size: 12px; font-weight: 600; margin: 12px 0 16px 0;">
+                <span style="font-size: 14px;">🛡️</span>
+                <span>Predefined credentials for demo in README.</span>
+            </div>
+            """), unsafe_allow_html=True)
+            
+            login_clicked = st.button("Secure Login 🔒", use_container_width=True, key="login_submit_btn")
+            
+            forgot_clicked = st.button("Forgot Password?", key="login_forgot_btn", use_container_width=True)
+            
+            if login_clicked:
+                if email.strip() and password.strip():
+                    from src.database import authenticate_user, log_action
+                    user = authenticate_user(email.strip(), password.strip())
+                    if user:
+                        st.session_state.logged_in = True
+                        st.session_state.user = user
+                        st.session_state.page = "dashboard" if user['role'] == 'MERCHANT' else "admin"
+                        st.session_state.messages = []  # Clear chat
+                        log_action(user['user_id'], "User Login", f"Successful login. Role: {user['role']}, Merchant: {user['merchant_id']}, Store: {user['store_id']}")
+                        st.toast(f"Logged in successfully as {email}!", icon="\u2705")
+                        from src.database import create_user_session
+                        session_token = create_user_session(user['user_id'])
+                        import streamlit.components.v1 as components
+                        components.html(f"""
+                        <script>
+                            const expires = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toUTCString();
+                            window.parent.document.cookie = "session_token={session_token}; path=/; expires=" + expires + "; SameSite=Lax";
+                            window.parent.location.reload();
+                        </script>
+                        """, height=0, width=0)
+                        st.stop()
+                    else:
+                        st.error("Authentication failed. Invalid email or password.")
+                else:
+                    st.warning("Please enter your email and password.")
+                    
+            if forgot_clicked:
+                st.markdown(clean_html("""
+                <div style="background-color: #FEF3C7; border: 1px solid #FDE68A; border-left: 4px solid #D97706; padding: 12px; border-radius: 6px; margin-top: 12px; font-size: 12px; color: #92400E;">
+                    <strong>🔒 Enterprise Recovery Protocol:</strong> Self-service reset is disabled for security. Please raise a support ticket or contact your Razorpay Administrator at <code>admin@razorpay-demo.com</code>.
+                </div>
+                """), unsafe_allow_html=True)
+            
     st.stop()
 
 # ----------------------------------------------------
@@ -1928,8 +2095,14 @@ if st.session_state.current_indexed_batch != dataset_option:
     except Exception as e:
         st.error(f"Failed to export data for RAG: {e}")
 
-# Handle search and notify queries
+# Handle deep linking and query parameters
 query_params = st.query_params
+if "audit_tx" in query_params:
+    st.session_state.page = "transactions"
+    st.session_state.audit_tx = query_params["audit_tx"]
+elif "page" in query_params and query_params["page"] != st.session_state.page:
+    st.session_state.page = query_params["page"]
+
 if "notify" in query_params:
     st.toast("🔔 Notifications: Today's closing batch contains 16 unresolved gateway exceptions.", icon="⚠️")
     st.query_params.clear()
