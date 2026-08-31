@@ -237,6 +237,14 @@ def retrieve_relevant_context_with_sources(query, api_key, top_n=3, merchant_id=
                 filtered.append(c)
         chunks = filtered
             
+    # Extract unique ID-like tokens from query to boost matching chunks (e.g. pay_24305904, order_67062156)
+    query_lower = query.lower()
+    id_tokens = set(re.findall(r'\b(?:pay|order|txn|tx|ref)_[a-zA-Z0-9_]+\b|\bpay_[a-zA-Z0-9_]+\b', query_lower))
+    for word in re.findall(r'\b[a-zA-Z0-9_-]+\b', query_lower):
+        if (any(c.isdigit() for c in word) and len(word) >= 6) or word.startswith(('pay_', 'order_', 'txn_', 'ref_')):
+            id_tokens.add(word)
+            id_tokens.add(word.replace('-', '_'))
+
     # Check if we can perform semantic search (we need query api_key, and chunks must have embeddings)
     has_embeddings = any(c['embedding'] and len(c['embedding']) > 0 for c in chunks)
     
@@ -249,8 +257,16 @@ def retrieve_relevant_context_with_sources(query, api_key, top_n=3, merchant_id=
             similarities = []
             for chunk in chunks:
                 chunk_emb = chunk['embedding']
+                
+                # Check for exact ID match boost
+                boost = 0.0
+                chunk_text_lower = chunk['text_content'].lower()
+                for id_tok in id_tokens:
+                    if id_tok in chunk_text_lower:
+                        boost += 100.0
+                        
                 if not chunk_emb:
-                    similarities.append((-1.0, chunk))
+                    similarities.append((-1.0 + boost, chunk))
                     continue
                     
                 # Cosine Similarity
@@ -259,13 +275,13 @@ def retrieve_relevant_context_with_sources(query, api_key, top_n=3, merchant_id=
                 norm_c = np.linalg.norm(chunk_emb)
                 
                 similarity = dot_product / (norm_q * norm_c) if (norm_q * norm_c) > 0 else 0
-                similarities.append((similarity, chunk))
+                similarities.append((similarity + boost, chunk))
                 
             similarities.sort(key=lambda x: x[0], reverse=True)
             # Retrieve top matches
             results = []
             for score, chunk in similarities[:top_n]:
-                if score > 0.1:
+                if score > 0.1 or score > 10.0:
                     chunk_copy = chunk.copy()
                     chunk_copy['score'] = float(score)
                     results.append(chunk_copy)
@@ -293,20 +309,27 @@ def retrieve_relevant_context_with_sources(query, api_key, top_n=3, merchant_id=
         chunk_text = chunk['text_content']
         chunk_tokens = tokenize(chunk_text)
         
+        # Check for exact ID match boost
+        boost = 0.0
+        chunk_text_lower = chunk_text.lower()
+        for id_tok in id_tokens:
+            if id_tok in chunk_text_lower:
+                boost += 100.0
+                
         score = 0
         for token in query_tokens:
             count = chunk_tokens.count(token)
             if count > 0:
                 score += (1 + np.log(count)) / (1 + np.log(len(chunk_tokens) + 1))
                 
-        scored_chunks.append((score, chunk))
+        scored_chunks.append((score + boost, chunk))
         
     scored_chunks.sort(key=lambda x: x[0], reverse=True)
     results = []
     for score, chunk in scored_chunks[:top_n]:
         if score > 0:
             chunk_copy = chunk.copy()
-            chunk_copy['score'] = float(score) / 10.0 # Normalized approximation
+            chunk_copy['score'] = float(score) / 10.0 if score < 10.0 else float(score)
             results.append(chunk_copy)
     return results
 

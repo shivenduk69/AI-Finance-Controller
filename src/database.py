@@ -196,6 +196,23 @@ def init_db():
     )
     """)
     
+    # Migrate support_tickets table if columns are missing from legacy DB
+    try:
+        cursor.execute("SELECT * FROM support_tickets LIMIT 1")
+        col_names = [desc[0].lower() for desc in cursor.description]
+        missing_cols = {
+            'merchant_id': 'VARCHAR(100)',
+            'store_id': 'VARCHAR(100)',
+            'user_id': 'VARCHAR(100)',
+            'category': 'VARCHAR(100)',
+            'priority': 'VARCHAR(50)'
+        }
+        for col, col_type in missing_cols.items():
+            if col not in col_names:
+                cursor.execute(f"ALTER TABLE support_tickets ADD COLUMN {col} {col_type}")
+    except Exception as e:
+        print(f"Migration error for support_tickets: {e}")
+    
     # 9. Persistent AI Conversations Table
     cursor.execute(f"""
     CREATE TABLE IF NOT EXISTS ai_conversations (
@@ -573,6 +590,36 @@ def create_conversation(user_id, merchant_id, store_id, title):
     conn.close()
     return conv_id
 
+def update_conversation_title_with_first_query(conversation_id, query_text):
+    """Appends first user query preview to the conversation title if it only contains the default title."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    is_pg = is_postgres_configured()
+    is_my = is_mysql_configured()
+    placeholder = "%s" if (is_pg or is_my) else "?"
+    
+    try:
+        # Check if conversation exists and get current title
+        cursor.execute(f"SELECT title FROM ai_conversations WHERE conversation_id = {placeholder}", (conversation_id,))
+        row = cursor.fetchone()
+        if row:
+            current_title = row[0]
+            # Only append if we haven't already appended a preview
+            if " - " not in current_title:
+                preview = query_text.strip()
+                if len(preview) > 40:
+                    preview = preview[:40] + "..."
+                new_title = f"{current_title} - {preview}"
+                cursor.execute(f"""
+                    UPDATE ai_conversations SET title = {placeholder}
+                    WHERE conversation_id = {placeholder}
+                """, (new_title, conversation_id))
+                conn.commit()
+    except Exception as e:
+        print(f"Error updating conversation title: {e}")
+    finally:
+        conn.close()
+
 def save_conversation_message(conversation_id, role, content, sources=None):
     """Saves a conversation turn message."""
     conn = get_connection()
@@ -771,8 +818,34 @@ def delete_document_chunks(file_name):
 
 # --- Support Tickets / Contact Us Functions ---
 
-def raise_support_ticket(transaction_id, merchant_name, subject, message, merchant_id=None, store_id=None, user_id=None, category=None, priority=None):
-    """Inserts a new support ticket in the database."""
+def get_merchant_name(merchant_id):
+    """Retrieves name of a merchant by merchant_id."""
+    if not merchant_id:
+        return "Unknown Merchant"
+    conn = get_connection()
+    cursor = conn.cursor()
+    is_pg = is_postgres_configured()
+    is_my = is_mysql_configured()
+    placeholder = "%s" if (is_pg or is_my) else "?"
+    
+    try:
+        cursor.execute(f"SELECT name FROM merchants WHERE merchant_id = {placeholder}", (merchant_id,))
+        row = cursor.fetchone()
+        if row:
+            return row[0]
+    except Exception:
+        pass
+    finally:
+        conn.close()
+    return merchant_id.capitalize()
+
+def raise_support_ticket(transaction_id, subject, message, merchant_id=None, store_id=None, user_id=None, category=None, priority=None, merchant_name=None):
+    """Inserts a new support ticket in the database and returns the generated ticket_id."""
+    if not merchant_name and merchant_id:
+        merchant_name = get_merchant_name(merchant_id)
+    if not merchant_name:
+        merchant_name = "Unknown Merchant"
+        
     conn = get_connection()
     cursor = conn.cursor()
     is_pg = is_postgres_configured()
@@ -780,15 +853,30 @@ def raise_support_ticket(transaction_id, merchant_name, subject, message, mercha
     
     placeholders = "%s, %s, %s, %s, %s, %s, %s, %s, %s, %s" if (is_pg or is_my) else "?, ?, ?, ?, ?, ?, ?, ?, ?, ?"
     
-    cursor.execute(f"""
-        INSERT INTO support_tickets (
-            transaction_id, merchant_name, subject, message, status, 
-            merchant_id, store_id, user_id, category, priority
-        ) VALUES ({placeholders})
-    """, (transaction_id, merchant_name, subject, message, 'OPEN', merchant_id, store_id, user_id, category, priority))
-        
-    conn.commit()
-    conn.close()
+    ticket_id = None
+    try:
+        if is_pg:
+            cursor.execute(f"""
+                INSERT INTO support_tickets (
+                    transaction_id, merchant_name, subject, message, status, 
+                    merchant_id, store_id, user_id, category, priority
+                ) VALUES ({placeholders}) RETURNING ticket_id
+            """, (transaction_id, merchant_name, subject, message, 'OPEN', merchant_id, store_id, user_id, category, priority))
+            ticket_id = cursor.fetchone()[0]
+        else:
+            cursor.execute(f"""
+                INSERT INTO support_tickets (
+                    transaction_id, merchant_name, subject, message, status, 
+                    merchant_id, store_id, user_id, category, priority
+                ) VALUES ({placeholders})
+            """, (transaction_id, merchant_name, subject, message, 'OPEN', merchant_id, store_id, user_id, category, priority))
+            ticket_id = cursor.lastrowid
+        conn.commit()
+    except Exception as e:
+        print(f"Error raising support ticket: {e}")
+    finally:
+        conn.close()
+    return ticket_id
 
 def get_support_tickets(merchant_name=None, merchant_id=None, store_id=None):
     """Retrieves support tickets. Isolated by merchant/store if specified."""
@@ -802,7 +890,7 @@ def get_support_tickets(merchant_name=None, merchant_id=None, store_id=None):
         if merchant_id and store_id:
             cursor.execute(f"""
                 SELECT ticket_id, transaction_id, merchant_name, subject, message, status, 
-                       resolution_comments, timestamp, category, priority, store_id 
+                       resolution_comments, timestamp, category, priority, store_id, merchant_id 
                 FROM support_tickets 
                 WHERE merchant_id = {placeholder} AND store_id = {placeholder} 
                 ORDER BY timestamp DESC
@@ -810,7 +898,7 @@ def get_support_tickets(merchant_name=None, merchant_id=None, store_id=None):
         elif merchant_id:
             cursor.execute(f"""
                 SELECT ticket_id, transaction_id, merchant_name, subject, message, status, 
-                       resolution_comments, timestamp, category, priority, store_id 
+                       resolution_comments, timestamp, category, priority, store_id, merchant_id 
                 FROM support_tickets 
                 WHERE merchant_id = {placeholder} 
                 ORDER BY timestamp DESC
@@ -818,7 +906,7 @@ def get_support_tickets(merchant_name=None, merchant_id=None, store_id=None):
         elif merchant_name:
             cursor.execute(f"""
                 SELECT ticket_id, transaction_id, merchant_name, subject, message, status, 
-                       resolution_comments, timestamp, category, priority, store_id 
+                       resolution_comments, timestamp, category, priority, store_id, merchant_id 
                 FROM support_tickets 
                 WHERE merchant_name = {placeholder} 
                 ORDER BY timestamp DESC
@@ -826,7 +914,7 @@ def get_support_tickets(merchant_name=None, merchant_id=None, store_id=None):
         else:
             cursor.execute("""
                 SELECT ticket_id, transaction_id, merchant_name, subject, message, status, 
-                       resolution_comments, timestamp, category, priority, store_id 
+                       resolution_comments, timestamp, category, priority, store_id, merchant_id 
                 FROM support_tickets 
                 ORDER BY timestamp DESC
             """)
@@ -840,11 +928,12 @@ def get_support_tickets(merchant_name=None, merchant_id=None, store_id=None):
                 'subject': row[3],
                 'message': row[4],
                 'status': row[5],
-                'resolution_comments': row[6] or "No resolution response yet.",
+                'reply': row[6], # Maps to reply for app.py compat (truthy check)
                 'timestamp': row[7],
                 'category': row[8] or "General",
                 'priority': row[9] or "Medium",
-                'store_id': row[10]
+                'store_id': row[10],
+                'merchant_id': row[11] or ""
             })
         return tickets
     except Exception as e:

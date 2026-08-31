@@ -266,8 +266,8 @@ if "sys_confidence_threshold" not in st.session_state:
 if "sys_gemini_api_key" not in st.session_state:
     from src.database import get_config
     st.session_state.sys_gemini_api_key = get_config("sys_gemini_api_key", os.environ.get("GEMINI_API_KEY", ""))
-if "sys_system_prompt_template" not in st.session_state:
-    st.session_state.sys_system_prompt_template = """You are the AI Finance Controller assistant.
+# Force override or initialize sys_system_prompt_template to ensure no sources are displayed in responses
+st.session_state.sys_system_prompt_template = """You are the AI Finance Controller assistant.
 Your goal is to answer the user's question using both transaction evidence and the provided financial documents/context.
 
 {evidence_prompt}
@@ -283,7 +283,7 @@ Rules:
 3. If the documents do not contain the answer, clearly say that the information was not found in the available documents.
 4. Distinguish between documented facts and your own reasoning.
 5. For financial calculations, show the relevant calculation.
-6. When possible, mention which document/source supports the answer."""
+6. Do not display, mention, or list the sources, filenames, or document chunks used to support your answer."""
 
 # TDS config
 if "sys_tds_config" not in st.session_state:
@@ -1198,6 +1198,17 @@ st.markdown("""
         border-color: #000000 !important;
         box-shadow: 0 0 0 1px #000000 !important;
     }
+    
+    /* Selectbox active borders override (replace Streamlit's red/coral theme color) */
+    div[data-baseweb="select"] {
+        border: 1px solid var(--border) !important;
+        border-radius: 4px !important;
+    }
+    div[data-baseweb="select"]:focus-within, 
+    div[data-baseweb="select"]:hover {
+        border-color: #000000 !important;
+        box-shadow: 0 0 0 1px #000000 !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -1362,6 +1373,7 @@ def export_data_for_rag(df_tx, df_orders, df_bank, merchant_id="flipkart", store
             
         # Re-index newly generated Markdown files (only deleting and indexing the changed ones)
         from src.database import delete_document_chunks
+        delete_document_chunks(f"07_internal_orders_data_{merchant_id}_{store_id}.md")
         delete_document_chunks(f"08_razorpay_transactions_data_{merchant_id}_{store_id}.md")
         delete_document_chunks(f"09_bank_statements_data_{merchant_id}_{store_id}.md")
         
@@ -1489,38 +1501,45 @@ if st.sidebar.button("🚪 Log Out", key="logout_sidebar_btn", use_container_wid
 # ----------------------------------------------------
 # TOP HEADER BAR IMPLEMENTATION
 # ----------------------------------------------------
-col_header_left, col_header_right = st.columns([2.2, 1.8])
-with col_header_left:
-    st.markdown(clean_html(f"""
-    <form action="" method="get" target="_self" style="width: 100%; margin: 0; padding: 0;">
-        <input type="hidden" name="page" value="{st.session_state.page}">
-        <div class="header-search-container">
-            <span style="font-size: 1rem; margin-right: 8px; color: #6B7C93;">🔍</span>
-            <input type="text" name="search" placeholder="Search transaction IDs, orders, or settlement credits..." style="border: none; outline: none; width: 100%; font-size: 0.85rem; font-weight: 500; color: #172B4D; font-family: 'Inter', sans-serif; background: transparent;">
-        </div>
-    </form>
-    """), unsafe_allow_html=True)
+if "active_batch" not in st.session_state:
+    st.session_state.active_batch = "Razorpay Synthetic Batch (60 records)"
 
-with col_header_right:
-    col_sub_icons, col_sub_sel = st.columns([1, 2])
-    with col_sub_icons:
-        st.markdown(clean_html("""
-        <div class="header-icons-wrapper">
-            <a href="?notify=true" target="_self" class="header-icon" title="Notifications" style="text-decoration: none;">🔔</a>
-            <a href="?page=settings" target="_self" class="header-icon" title="Help Centre" style="text-decoration: none;">❓</a>
-            <a href="?page=settings" target="_self" class="header-avatar" title="Shivendu K (Admin)" style="text-decoration: none; color: white;">FK</a>
-        </div>
+if st.session_state.page == "dashboard":
+    col_header_left, col_header_right = st.columns([2.2, 1.8])
+    with col_header_left:
+        st.markdown(clean_html(f"""
+        <form action="" method="get" target="_self" style="width: 100%; margin: 0; padding: 0;">
+            <input type="hidden" name="page" value="{st.session_state.page}">
+            <div class="header-search-container">
+                <span style="font-size: 1rem; margin-right: 8px; color: #6B7C93;">🔍</span>
+                <input type="text" name="search" placeholder="Search transaction IDs, orders, or settlement credits..." style="border: none; outline: none; width: 100%; font-size: 0.85rem; font-weight: 500; color: #172B4D; font-family: 'Inter', sans-serif; background: transparent;">
+            </div>
+        </form>
         """), unsafe_allow_html=True)
-    with col_sub_sel:
-        # Dynamic interactive batch selector
-        dataset_option = st.selectbox(
-            "Reconciliation Batch Selection",
-            ["Razorpay Synthetic Batch (60 records)", "Example August 25 Daily Close (80 records)"],
-            label_visibility="collapsed",
-            key="header_batch_selector"
-        )
 
-st.markdown('<div class="header-divider"></div>', unsafe_allow_html=True)
+    with col_header_right:
+        col_sub_icons, col_sub_sel = st.columns([1, 2])
+        with col_sub_icons:
+            st.markdown(clean_html("""
+            <div class="header-icons-wrapper">
+                <a href="?notify=true" target="_self" class="header-icon" title="Notifications" style="text-decoration: none;">🔔</a>
+                <a href="?page=settings" target="_self" class="header-icon" title="Help Centre" style="text-decoration: none;">❓</a>
+                <a href="?page=settings" target="_self" class="header-avatar" title="Shivendu K (Admin)" style="text-decoration: none; color: white;">FK</a>
+            </div>
+            """), unsafe_allow_html=True)
+        with col_sub_sel:
+            # Dynamic interactive batch selector
+            dataset_option = st.selectbox(
+                "Reconciliation Batch Selection",
+                ["Razorpay Synthetic Batch (60 records)", "Example August 25 Daily Close (80 records)"],
+                label_visibility="collapsed",
+                key="header_batch_selector"
+            )
+            st.session_state.active_batch = dataset_option
+
+    st.markdown('<div class="header-divider"></div>', unsafe_allow_html=True)
+else:
+    dataset_option = st.session_state.active_batch
 
 # ----------------------------------------------------
 # CORE ENGINE DATA RETRIEVAL
@@ -2571,13 +2590,39 @@ elif st.session_state.page == "tax":
     # Tax metrics
     tx1, tx2, tx3, tx4 = st.columns(4)
     with tx1:
-        st.metric("Total Gateway GST Audited", f"₹{tax_summary['total_gst_collected_inr']:,.2f}")
+        st.markdown(f"""
+        <div class="kpi-card">
+            <div class="kpi-title">TOTAL GATEWAY GST AUDITED</div>
+            <div class="kpi-value">₹{tax_summary['total_gst_collected_inr']:,.2f}</div>
+            <div class="kpi-desc">Audited gateway GST collected</div>
+        </div>
+        """, unsafe_allow_html=True)
     with tx2:
-        st.metric("Total 194-O TDS Audited", f"₹{tax_summary['total_tds_deducted_inr']:,.2f}")
+        st.markdown(f"""
+        <div class="kpi-card">
+            <div class="kpi-title">TOTAL 194-O TDS AUDITED</div>
+            <div class="kpi-value">₹{tax_summary['total_tds_deducted_inr']:,.2f}</div>
+            <div class="kpi-desc">Audited 1% e-commerce TDS</div>
+        </div>
+        """, unsafe_allow_html=True)
     with tx3:
-        st.metric("Compliance Rate", f"{tax_summary['tax_compliance_pct']}%")
+        st.markdown(f"""
+        <div class="kpi-card">
+            <div class="kpi-title">COMPLIANCE RATE</div>
+            <div class="kpi-value">{tax_summary['tax_compliance_pct']}%</div>
+            <div class="kpi-desc">Tax compliance match rate</div>
+        </div>
+        """, unsafe_allow_html=True)
     with tx4:
-        st.metric("Anomalies Flagged", f"{tax_summary['total_tax_discrepancies']}")
+        anom_val = tax_summary['total_tax_discrepancies']
+        status_pill_html = '<span class="status-pill ok">Fully Compliant</span>' if anom_val == 0 else '<span class="status-pill needs_review">Requires Review</span>'
+        st.markdown(f"""
+        <div class="kpi-card">
+            <div class="kpi-title">ANOMALIES FLAGGED</div>
+            <div class="kpi-value">{anom_val}</div>
+            <div class="kpi-desc">{status_pill_html}</div>
+        </div>
+        """, unsafe_allow_html=True)
         
     st.markdown("<br>", unsafe_allow_html=True)
     
@@ -2639,7 +2684,7 @@ elif st.session_state.page == "insights":
     st.markdown("<p style='color: var(--text-sec); font-size: 14px;'>RAG-enabled Generative Finance Auditor & Compliance assistant.</p>", unsafe_allow_html=True)
     
     user = st.session_state.user
-    from src.database import get_conversations, get_conversation_messages, create_conversation, save_conversation_message, delete_conversation
+    from src.database import get_conversations, get_conversation_messages, create_conversation, save_conversation_message, delete_conversation, update_conversation_title_with_first_query
     
     # Initialize conversation thread state on first load
     if "conversation_id" not in st.session_state:
@@ -2692,9 +2737,12 @@ elif st.session_state.page == "insights":
                 # Save user message
                 st.session_state.messages.append({"role": "user", "content": chat_user_query})
                 save_conversation_message(st.session_state.conversation_id, "user", chat_user_query)
+                # Update conversation title with first user query preview
+                update_conversation_title_with_first_query(st.session_state.conversation_id, chat_user_query)
                 
                 # Generate RAG grounded response
-                generate_ai_response(chat_user_query, conversation_id=st.session_state.conversation_id, merchant_id=user['merchant_id'])
+                with st.spinner("Generating..."):
+                    generate_ai_response(chat_user_query, conversation_id=st.session_state.conversation_id, merchant_id=user['merchant_id'])
                 st.rerun()
  
     with col_backup:
@@ -2765,38 +2813,84 @@ elif st.session_state.page == "insights":
 elif st.session_state.page == "forecast":
     st.markdown("<h2>📈 Forward Treasury & Cash Flow Forecast</h2>", unsafe_allow_html=True)
     
-    # Forecasting metrics
-    cf1, cf2, cf3 = st.columns(3)
-    with cf1:
-        st.metric("Projected 7-Day Treasury Reserves", f"₹{forecast_df.iloc[-1]['cumulative_cash']:,.2f}")
-    with cf2:
-        st.metric("Next 2-Day Committed Inflows", f"₹{forecast_df.iloc[:2]['gross_collections'].sum():,.2f}")
-    with cf3:
-        st.metric("Average Daily Net Treasury Flow", f"₹{forecast_df['net_inflow'].mean():,.2f}")
-        
-    st.markdown("<br>", unsafe_allow_html=True)
+    # 1. Determine forecast start date dynamically
+    df_bank_clean = df_bank.copy()
+    df_bank_clean['date_dt'] = pd.to_datetime(df_bank_clean['date'], format="%d-%m-%Y", errors='coerce')
     
-    # Forecast chart
-    st.markdown("### FORWARD TREASURY TREND (7 DAYS)")
-    fig = go.Figure()
-    fig.add_trace(go.Bar(
-        x=forecast_df['date'],
-        y=forecast_df['net_inflow'],
-        name='Net Daily Cash flow',
-        marker_color='#0F4C75'
-    ))
-    fig.add_trace(go.Scatter(
-        x=forecast_df['date'],
-        y=forecast_df['cumulative_cash'],
-        name='Cumulative Reserves',
-        line=dict(color='#EF4444', width=3)
-    ))
-    fig.update_layout(
-        height=300,
-        margin=dict(l=10, r=10, t=10, b=10),
-        template='plotly_white'
-    )
-    st.plotly_chart(fig, use_container_width=True)
+    if not df_bank_clean.empty and not df_bank_clean['date_dt'].isna().all():
+        latest_bank_date = df_bank_clean['date_dt'].max()
+    elif not df_tx.empty:
+        if 'timestamp' in df_tx.columns:
+            ts = pd.to_datetime(df_tx['timestamp'], format="%d-%m-%Y %H:%M", errors='coerce')
+            latest_bank_date = ts.max()
+        else:
+            latest_bank_date = datetime.now()
+    else:
+        latest_bank_date = datetime.now()
+        
+    forecast_start_date = latest_bank_date + timedelta(days=1)
+    
+    # Render selectors inside columns
+    col_d1, col_d2 = st.columns(2)
+    with col_d1:
+        start_date_val = st.date_input("Start Date", value=forecast_start_date.date(), min_value=forecast_start_date.date(), key="forecast_start_date_picker")
+    with col_d2:
+        end_date_val = st.date_input("End Date", value=(forecast_start_date + timedelta(days=6)).date(), min_value=start_date_val, key="forecast_end_date_picker")
+        
+    # Calculate days needed and run dynamic forecast
+    days_needed = (end_date_val - forecast_start_date.date()).days + 1
+    # Generate forecast up to at least the days requested
+    dynamic_forecast_df = get_cash_forecast(df_tx, df_bank, days=max(7, days_needed))
+    dynamic_forecast_df['date_dt'] = pd.to_datetime(dynamic_forecast_df['date'], format="%d-%m-%Y")
+    
+    # Filter to chosen date range
+    filtered_df = dynamic_forecast_df[
+        (dynamic_forecast_df['date_dt'].dt.date >= start_date_val) & 
+        (dynamic_forecast_df['date_dt'].dt.date <= end_date_val)
+    ]
+    
+    if filtered_df.empty:
+        st.warning("No data available for the selected date range.")
+    else:
+        # Sum collections and outflows in the filtered period
+        total_inflow = filtered_df['gross_collections'].sum()
+        total_outflow = (filtered_df['refunds'] + filtered_df['payouts'] + filtered_df['fees_gst']).sum()
+        net_flow_sum = filtered_df['net_inflow'].sum()
+        ending_reserves = filtered_df.iloc[-1]['cumulative_cash']
+        
+        # Forecasting metrics
+        cf1, cf2, cf3 = st.columns(3)
+        with cf1:
+            st.metric("Projected Ending Reserves", f"₹{ending_reserves:,.2f}")
+        with cf2:
+            st.metric("Total Projected Net Cash Flow", f"₹{net_flow_sum:,.2f}")
+        with cf3:
+            st.metric("Total Projected Inflows", f"₹{total_inflow:,.2f}")
+            
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # Forecast chart
+        st.markdown(f"### FORWARD TREASURY TREND ({start_date_val.strftime('%d %b %Y')} to {end_date_val.strftime('%d %b %Y')})")
+        fig = go.Figure()
+        fig.add_trace(go.Bar(
+            x=filtered_df['date'],
+            y=filtered_df['net_inflow'],
+            name='Net Daily Cash flow',
+            marker_color='#0F4C75'
+        ))
+        fig.add_trace(go.Scatter(
+            x=filtered_df['date'],
+            y=filtered_df['cumulative_cash'],
+            name='Cumulative Reserves',
+            line=dict(color='#EF4444', width=3)
+        ))
+        fig.update_layout(
+            height=300,
+            margin=dict(l=10, r=10, t=10, b=10),
+            template='plotly_white',
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
 # ----------------------------------------------------
 # PAGE 10: REPORTS
@@ -2899,20 +2993,23 @@ elif st.session_state.page == "tickets":
                 ticket_id = raise_support_ticket(
                     merchant_id=user['merchant_id'],
                     store_id=user['store_id'],
+                    user_id=user['user_id'],
                     transaction_id=sel_tx if sel_tx != "General Support Query" else "",
                     subject=subj.strip(),
-                    message=msg_body.strip()
+                    message=msg_body.strip(),
+                    category=category,
+                    priority=priority
                 )
                 log_action(user['user_id'], "Raise Ticket", f"Ticket #{ticket_id} opened. Subject: {subj.strip()}")
                 st.success(f"[OK] Ticket #{ticket_id} submitted successfully to Razorpay Operations.")
-                st.toast(f"Ticket #{ticket_id} submitted!", icon="\u2705")
+                st.toast(f"Ticket #{ticket_id} submitted!", icon="✅")
                 st.rerun()
             else:
                 st.error("Please provide both a subject and description.")
                 
     with t_tab2:
         st.markdown("### Ticket Logs")
-        tickets = get_support_tickets(user['merchant_id'], user['store_id'])
+        tickets = get_support_tickets(merchant_id=user['merchant_id'], store_id=user['store_id'])
         if not tickets:
             st.info("No helpdesk queries raised for this store.")
         else:
@@ -3091,7 +3188,7 @@ elif st.session_state.page == "admin_tickets":
     else:
         for tk in tickets:
             color_tk = "var(--success)" if tk['status'] == 'RESOLVED' else "var(--warning)"
-            t_merchant = tk['merchant_id'].upper()
+            t_merchant = (tk['merchant_id'] or "general").upper()
             t_store = tk['store_id'].split('_')[-1].upper()
             t_tx = tk['transaction_id'] if tk['transaction_id'] else 'None'
             ticket_info_html = (
@@ -3107,7 +3204,7 @@ elif st.session_state.page == "admin_tickets":
             )
             st.markdown(ticket_info_html, unsafe_allow_html=True)
             
-            if tk['status'] == 'PENDING':
+            if tk['status'] in ['OPEN', 'PENDING']:
                 with st.expander("Reply and Resolve Ticket"):
                     reply_text = st.text_area("Operations Response Msg", key=f"reply_{tk['ticket_id']}")
                     if st.button("Submit Response & Mark Resolved", key=f"btn_reply_{tk['ticket_id']}"):
@@ -3450,7 +3547,7 @@ with st.popover("💬 Ask AI Assistant", use_container_width=False):
                 
         with chat_popup_cont:
             with st.chat_message("assistant"):
-                with st.spinner("Analyzing data and matching policy references..."):
+                with st.spinner("Generating..."):
                     u_merchant_id = st.session_state.user['merchant_id'] if st.session_state.user['role'] == 'MERCHANT' else None
                     generate_ai_response(popup_chat_input, merchant_id=u_merchant_id)
                     st.markdown(st.session_state.messages[-1]["content"])
