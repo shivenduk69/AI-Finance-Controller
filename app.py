@@ -264,7 +264,8 @@ if "sys_gemini_model" not in st.session_state:
 if "sys_confidence_threshold" not in st.session_state:
     st.session_state.sys_confidence_threshold = 80
 if "sys_gemini_api_key" not in st.session_state:
-    st.session_state.sys_gemini_api_key = os.environ.get("GEMINI_API_KEY", "")
+    from src.database import get_config
+    st.session_state.sys_gemini_api_key = get_config("sys_gemini_api_key", os.environ.get("GEMINI_API_KEY", ""))
 if "sys_system_prompt_template" not in st.session_state:
     st.session_state.sys_system_prompt_template = """You are the AI Finance Controller assistant.
 Your goal is to answer the user's question using both transaction evidence and the provided financial documents/context.
@@ -323,9 +324,19 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ----------------------------------------------------
-# LOGIN ACCESS CONTROL GUARD
-# ----------------------------------------------------
+# Try to restore session from cookie
+if "logged_in" not in st.session_state or not st.session_state.logged_in:
+    cookies = st.context.cookies
+    token = cookies.get("session_token")
+    if token:
+        from src.database import get_user_by_session
+        user = get_user_by_session(token)
+        if user:
+            st.session_state.logged_in = True
+            st.session_state.user = user
+            st.session_state.page = "dashboard" if user['role'] == 'MERCHANT' else "admin"
+            st.session_state.messages = []
+
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "user" not in st.session_state:
@@ -428,7 +439,17 @@ if not st.session_state.logged_in:
                 st.session_state.messages = []  # Clear chat
                 log_action(user['user_id'], "User Login", f"Successful login. Role: {user['role']}, Merchant: {user['merchant_id']}, Store: {user['store_id']}")
                 st.toast(f"Logged in successfully as {email}!", icon="\u2705")
-                st.rerun()
+                from src.database import create_user_session
+                session_token = create_user_session(user['user_id'])
+                import streamlit.components.v1 as components
+                components.html(f"""
+                <script>
+                    const expires = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toUTCString();
+                    window.parent.document.cookie = "session_token={session_token}; path=/; expires=" + expires + "; SameSite=Lax";
+                    window.parent.location.reload();
+                </script>
+                """, height=0, width=0)
+                st.stop()
             else:
                 st.error("Authentication failed. Invalid email or password.")
         else:
@@ -1155,6 +1176,28 @@ st.markdown("""
         border-radius: 6px !important;
         border: 1px solid var(--border) !important;
     }
+    
+    /* Focus and active input element borders override (replace Streamlit's red/coral theme color) */
+    div[data-baseweb="input"] {
+        border: 1px solid var(--border) !important;
+    }
+    div[data-baseweb="input"]:focus-within, 
+    div[data-baseweb="input"]:hover {
+        border-color: #000000 !important;
+        box-shadow: 0 0 0 1px #000000 !important;
+    }
+    div[data-baseweb="textarea"] {
+        border: 1px solid var(--border) !important;
+    }
+    div[data-baseweb="textarea"]:focus-within, 
+    div[data-baseweb="textarea"]:hover {
+        border-color: #000000 !important;
+        box-shadow: 0 0 0 1px #000000 !important;
+    }
+    div[data-testid="stChatInput"] textarea:focus {
+        border-color: #000000 !important;
+        box-shadow: 0 0 0 1px #000000 !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -1263,7 +1306,8 @@ I could not find sufficient information in the available knowledge base to answe
             sources_md += f"> {chunk_display}\n\n"
         sources_md += "</details>"
         
-        answer += sources_md
+        # Do not append RAG sources metadata to the final response
+        # answer += sources_md
 
     st.session_state.messages.append({"role": "assistant", "content": answer})
     if conversation_id:
@@ -1316,9 +1360,13 @@ def export_data_for_rag(df_tx, df_orders, df_bank, merchant_id="flipkart", store
         with open(bank_path, "w", encoding="utf-8") as f:
             f.write(bank_md)
             
-        # Re-index newly generated Markdown files
+        # Re-index newly generated Markdown files (only deleting and indexing the changed ones)
+        from src.database import delete_document_chunks
+        delete_document_chunks(f"08_razorpay_transactions_data_{merchant_id}_{store_id}.md")
+        delete_document_chunks(f"09_bank_statements_data_{merchant_id}_{store_id}.md")
+        
         from src.rag_engine import build_document_index
-        build_document_index(st.session_state.sys_gemini_api_key, force_reindex=True)
+        build_document_index(st.session_state.sys_gemini_api_key, force_reindex=False)
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -1421,12 +1469,22 @@ st.sidebar.markdown(f"""
 """, unsafe_allow_html=True)
 
 if st.sidebar.button("🚪 Log Out", key="logout_sidebar_btn", use_container_width=True):
-    from src.database import log_action
+    from src.database import log_action, delete_user_session
     log_action(user['user_id'], "User Logout", "Logged out successfully.")
+    token = st.context.cookies.get("session_token")
+    if token:
+        delete_user_session(token)
     st.session_state.logged_in = False
     st.session_state.user = None
     st.session_state.page = "dashboard"
-    st.rerun()
+    import streamlit.components.v1 as components
+    components.html("""
+    <script>
+        window.parent.document.cookie = "session_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC;";
+        window.parent.location.reload();
+    </script>
+    """, height=0, width=0)
+    st.stop()
 
 # ----------------------------------------------------
 # TOP HEADER BAR IMPLEMENTATION
@@ -1498,8 +1556,11 @@ else:
 
 # Trigger dynamic dataset RAG export only when the active batch selection changes
 if st.session_state.current_indexed_batch != dataset_option:
-    export_data_for_rag(df_tx, df_orders_scoped, df_bank, current_merchant_id or "flipkart", current_store_id or "fk_delhi")
     st.session_state.current_indexed_batch = dataset_option
+    try:
+        export_data_for_rag(df_tx, df_orders_scoped, df_bank, current_merchant_id or "flipkart", current_store_id or "fk_delhi")
+    except Exception as e:
+        st.error(f"Failed to export data for RAG: {e}")
 
 # Handle search and notify queries
 query_params = st.query_params

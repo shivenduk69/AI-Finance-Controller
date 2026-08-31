@@ -254,6 +254,15 @@ def init_db():
     )
     """)
     
+    # 14. Persistent User Sessions Table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS user_sessions (
+        session_token VARCHAR(100) PRIMARY KEY,
+        user_id VARCHAR(100),
+        expires_at INT
+    )
+    """)
+    
     conn.commit()
     
     # --- SEEDING PREDEFINED DATA ---
@@ -991,5 +1000,75 @@ def get_audit_logs():
     except Exception as e:
         print(f"Error reading audit logs: {e}")
         return []
+    finally:
+        conn.close()
+
+def create_user_session(user_id):
+    """Creates a persistent session token in the database valid for 14 days."""
+    import secrets
+    import time
+    conn = get_connection()
+    cursor = conn.cursor()
+    is_pg = is_postgres_configured()
+    is_my = is_mysql_configured()
+    placeholders = "%s, %s, %s" if (is_pg or is_my) else "?, ?, ?"
+    
+    token = secrets.token_hex(24)
+    # 14 days in seconds
+    expires_at = int(time.time() + 14 * 24 * 60 * 60)
+    
+    try:
+        cursor.execute(f"INSERT INTO user_sessions (session_token, user_id, expires_at) VALUES ({placeholders})", (token, user_id, expires_at))
+        conn.commit()
+    except Exception as e:
+        print(f"Error creating user session: {e}")
+    finally:
+        conn.close()
+    return token
+
+def get_user_by_session(token):
+    """Retrieves user details if session token is valid and not expired."""
+    import time
+    conn = get_connection()
+    cursor = conn.cursor()
+    is_pg = is_postgres_configured()
+    is_my = is_mysql_configured()
+    placeholder = "%s" if (is_pg or is_my) else "?"
+    
+    current_time = int(time.time())
+    try:
+        cursor.execute(f"""
+            SELECT u.user_id, u.email, u.role, u.merchant_id, u.store_id 
+            FROM user_sessions s
+            JOIN users u ON s.user_id = u.user_id
+            WHERE s.session_token = {placeholder} AND s.expires_at > {placeholder}
+        """, (token, current_time))
+        row = cursor.fetchone()
+        if row:
+            return {
+                'user_id': row[0],
+                'email': row[1],
+                'role': row[2],
+                'merchant_id': row[3],
+                'store_id': row[4]
+            }
+    except Exception as e:
+        print(f"Error validating session: {e}")
+    finally:
+        conn.close()
+    return None
+
+def delete_user_session(token):
+    """Deletes a session token from database."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    is_pg = is_postgres_configured()
+    is_my = is_mysql_configured()
+    placeholder = "%s" if (is_pg or is_my) else "?"
+    try:
+        cursor.execute(f"DELETE FROM user_sessions WHERE session_token = {placeholder}", (token,))
+        conn.commit()
+    except Exception as e:
+        print(f"Error deleting session: {e}")
     finally:
         conn.close()

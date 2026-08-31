@@ -79,8 +79,12 @@ def split_text_into_chunks(text, chunk_size=800, overlap=150):
             
     return chunks
 
+# Module level flag to prevent spamming console
+_embedding_disabled_warning_shown = False
+
 def get_gemini_embedding(text, api_key, model="models/text-embedding-004"):
     """Computes embedding vector for a string using Google Gemini embedding API."""
+    global _embedding_disabled_warning_shown
     if not api_key:
         return None
     try:
@@ -92,7 +96,23 @@ def get_gemini_embedding(text, api_key, model="models/text-embedding-004"):
         )
         return result['embedding']
     except Exception as e:
-        print(f"Gemini Embedding Error: {str(e)}")
+        # Fallback to models/embedding-001 if model is text-embedding-004
+        if model == "models/text-embedding-004":
+            try:
+                result = genai.embed_content(
+                    model="models/embedding-001",
+                    content=text,
+                    task_type="retrieval_document"
+                )
+                return result['embedding']
+            except Exception as e2:
+                if not _embedding_disabled_warning_shown:
+                    print(f"Gemini Embedding Error (including fallback models/embedding-001): {str(e2)}. Storing empty vectors.")
+                    _embedding_disabled_warning_shown = True
+        else:
+            if not _embedding_disabled_warning_shown:
+                print(f"Gemini Embedding Error: {str(e)}. Storing empty vectors.")
+                _embedding_disabled_warning_shown = True
         return None
 
 def build_document_index(api_key, force_reindex=False):
