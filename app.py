@@ -2434,7 +2434,7 @@ if st.session_state.page == "dashboard":
     # 1. TOP COMPACT HEADER
     col_head_left, col_head_right = st.columns([1.5, 1.5])
     with col_head_left:
-        st.markdown(f"<h2 style='font-size: 22px; font-weight: 800; color: #172B4D; font-family: \"Outfit\", sans-serif; margin: 0 0 2px 0;'>Welcome back, {store_title} 👋</h2>", unsafe_allow_html=True)
+        st.markdown(f"<h2 style='font-size: 22px; font-weight: 800; color: #172B4D; font-family: \"Outfit\", sans-serif; margin: 0 0 2px 0;'>Welcome back, {store_title}</h2>", unsafe_allow_html=True)
         st.markdown("<p style='font-size: 13.5px; color: #6B7C93; margin: 0;'>Here's an overview of your financial operations.</p>", unsafe_allow_html=True)
     with col_head_right:
         c_dt, c_ref, c_exp = st.columns([2.2, 0.45, 1.45])
