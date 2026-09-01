@@ -95,8 +95,14 @@ def run_3way_reconciliation(merchant_id=None, store_id=None, gateway_fee_rate=0.
     bank_status_lookup = dict(zip(df_bank_reconciled['date'], df_bank_reconciled['status']))
     bank_diff_lookup = dict(zip(df_bank_reconciled['date'], df_bank_reconciled['difference']))
     
-    # Duplicate transaction IDs check
-    duplicate_txs = df_rp[df_rp.duplicated(subset=['transaction_id'], keep=False)]['transaction_id'].tolist()
+    # Duplicate transaction IDs check (use set for O(1) lookup)
+    duplicate_txs = set(df_rp[df_rp.duplicated(subset=['transaction_id'], keep=False)]['transaction_id'])
+    
+    # Pre-index internal orders for O(1) dictionary lookups
+    orders_lookup = {}
+    if not df_orders.empty:
+        for ord_rec in df_orders.to_dict('records'):
+            orders_lookup[str(ord_rec.get('order_id', ''))] = ord_rec
     
     # ----------------------------------------------------
     # RECONCILING EACH GATEWAY RECORD
@@ -193,30 +199,30 @@ def run_3way_reconciliation(merchant_id=None, store_id=None, gateway_fee_rate=0.
                 exceptions.append(f"REFUND_SETTLED_AMOUNT_MISMATCH (Expected: ₹{expected_settled:.2f}, Recorded: ₹{rec_settled:.2f})")
                 confidence = min(confidence, 10)
 
-        # Rule 6: Internal Order Lookup (for payments only)
+        # Rule 6: Internal Order Lookup (for payments only) - O(1) indexed lookup
         order_amount_match = True
         order_status_match = True
         
         if tx_type == 'PAYMENT' and "MISSING_ORDER_ID" not in exceptions:
-            # Lookup order
-            matched_orders = df_orders[df_orders['order_id'] == order_id]
-            if len(matched_orders) == 0:
+            ord_row = orders_lookup.get(str(order_id).strip())
+            if not ord_row:
                 exceptions.append("INTERNAL_ORDER_NOT_FOUND")
                 confidence = min(confidence, 0)
             else:
                 matched_order_ids.add(order_id)
-                ord_row = matched_orders.iloc[0]
+                ord_amt = float(ord_row['amount_inr'])
+                ord_stat = str(ord_row['status'])
                 
                 # Check amount
-                if abs(ord_row['amount_inr'] - amount) > 0.05:
-                    exceptions.append(f"INTERNAL_AMOUNT_MISMATCH (Internal: ₹{ord_row['amount_inr']:,.2f}, Gateway: ₹{amount:,.2f})")
+                if abs(ord_amt - amount) > 0.05:
+                    exceptions.append(f"INTERNAL_AMOUNT_MISMATCH (Internal: ₹{ord_amt:,.2f}, Gateway: ₹{amount:,.2f})")
                     confidence = min(confidence, 30)
                     order_amount_match = False
                     
                 # Check status compatibility
                 expected_ord_status = 'completed' if status in ['captured', 'disputed'] else 'failed'
-                if ord_row['status'] != expected_ord_status:
-                    exceptions.append(f"INTERNAL_STATUS_MISMATCH (Internal: '{ord_row['status']}', Gateway expected: '{expected_ord_status}')")
+                if ord_stat != expected_ord_status:
+                    exceptions.append(f"INTERNAL_STATUS_MISMATCH (Internal: '{ord_stat}', Gateway expected: '{expected_ord_status}')")
                     confidence = min(confidence, 40)
                     order_status_match = False
 
@@ -271,25 +277,24 @@ def run_3way_reconciliation(merchant_id=None, store_id=None, gateway_fee_rate=0.
     # ----------------------------------------------------
     # FIND UNMATCHED INTERNAL ORDERS (Orphans)
     # ----------------------------------------------------
-    # Completed internal orders that are not in the gateway report
-    df_completed_orders = df_orders[df_orders['status'] == 'completed']
     unmatched_orders = []
-    
-    for idx, row in df_completed_orders.iterrows():
-        o_id = row['order_id']
-        if o_id not in matched_order_ids:
-            unmatched_orders.append({
-                'order_id': o_id,
-                'amount_inr': row['amount_inr'],
-                'created_at': row['created_at'],
-                'status': row['status'],
-                'customer_email': row['customer_email'],
-                'calculated_exceptions': ["GATEWAY_PAYMENT_NOT_FOUND"],
-                'resolution_status': "NEEDS_REVIEW",
-                'confidence_score': 0.0,
-                'merchant_id': row.get('merchant_id', ''),
-                'store_id': row.get('store_id', '')
-            })
+    if not df_orders.empty:
+        df_completed_orders = df_orders[df_orders['status'] == 'completed']
+        for ord_row in df_completed_orders.to_dict('records'):
+            o_id = ord_row['order_id']
+            if o_id not in matched_order_ids:
+                unmatched_orders.append({
+                    'order_id': o_id,
+                    'amount_inr': ord_row['amount_inr'],
+                    'created_at': ord_row['created_at'],
+                    'status': ord_row['status'],
+                    'customer_email': ord_row['customer_email'],
+                    'calculated_exceptions': ["GATEWAY_PAYMENT_NOT_FOUND"],
+                    'resolution_status': "NEEDS_REVIEW",
+                    'confidence_score': 0.0,
+                    'merchant_id': ord_row.get('merchant_id', ''),
+                    'store_id': ord_row.get('store_id', '')
+                })
     df_unmatched_orders = pd.DataFrame(unmatched_orders)
     if df_unmatched_orders.empty:
         df_unmatched_orders = pd.DataFrame(columns=[

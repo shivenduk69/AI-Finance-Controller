@@ -81,12 +81,18 @@ def split_text_into_chunks(text, chunk_size=800, overlap=150):
 
 # Module level flag to prevent spamming console
 _embedding_disabled_warning_shown = False
+_EMBEDDING_CACHE = {}
 
 def get_gemini_embedding(text, api_key, model="models/text-embedding-004"):
-    """Computes embedding vector for a string using Google Gemini embedding API."""
-    global _embedding_disabled_warning_shown
+    """Computes embedding vector for a string using Google Gemini embedding API with in-memory memoization."""
+    global _embedding_disabled_warning_shown, _EMBEDDING_CACHE
     if not api_key:
         return None
+        
+    cache_key = (hash(text), api_key[:10], model)
+    if cache_key in _EMBEDDING_CACHE:
+        return _EMBEDDING_CACHE[cache_key]
+        
     try:
         genai.configure(api_key=api_key)
         result = genai.embed_content(
@@ -94,7 +100,10 @@ def get_gemini_embedding(text, api_key, model="models/text-embedding-004"):
             content=text,
             task_type="retrieval_document"
         )
-        return result['embedding']
+        emb = result['embedding']
+        if emb:
+            _EMBEDDING_CACHE[cache_key] = emb
+        return emb
     except Exception as e:
         # Fallback to models/embedding-001 if model is text-embedding-004
         if model == "models/text-embedding-004":
@@ -104,7 +113,10 @@ def get_gemini_embedding(text, api_key, model="models/text-embedding-004"):
                     content=text,
                     task_type="retrieval_document"
                 )
-                return result['embedding']
+                emb = result['embedding']
+                if emb:
+                    _EMBEDDING_CACHE[cache_key] = emb
+                return emb
             except Exception as e2:
                 if not _embedding_disabled_warning_shown:
                     print(f"Gemini Embedding Error (including fallback models/embedding-001): {str(e2)}. Storing empty vectors.")

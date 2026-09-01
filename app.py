@@ -221,16 +221,53 @@ def get_august_25_example_data(merchant_id="flipkart", store_id="fk_delhi"):
     
     return summary, df_txs, df_unmatched, df_bank, bank_excs
 
-# Initialize SQL database
-init_db()
+# Initialize SQL database once per process using st.cache_resource
+@st.cache_resource
+def initialize_database_once():
+    init_db()
+    return True
 
-# Load internal orders lookup for the Audit Deep-Dive Tab
-base_dir = os.path.dirname(os.path.abspath(__file__))
-orders_csv_path = os.path.join(base_dir, "data", "internal_orders.csv")
-if os.path.exists(orders_csv_path):
-    df_orders = pd.read_csv(orders_csv_path)
-else:
-    df_orders = pd.DataFrame(columns=['order_id', 'amount_inr', 'status', 'created_at', 'customer_email'])
+initialize_database_once()
+
+# Load internal orders lookup using st.cache_data
+@st.cache_data
+def load_internal_orders_csv():
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    orders_csv_path = os.path.join(base_dir, "data", "internal_orders.csv")
+    if os.path.exists(orders_csv_path):
+        return pd.read_csv(orders_csv_path)
+    return pd.DataFrame(columns=['order_id', 'amount_inr', 'status', 'created_at', 'customer_email', 'merchant_id', 'store_id'])
+
+df_orders = load_internal_orders_csv()
+
+# Cached engine wrappers for high-speed deterministic execution
+@st.cache_data(show_spinner=False)
+def cached_3way_reconciliation(merchant_id, store_id, gateway_fee_rate, gst_rate, payout_fee, settlement_delay_days):
+    return run_3way_reconciliation(
+        merchant_id=merchant_id,
+        store_id=store_id,
+        gateway_fee_rate=gateway_fee_rate,
+        gst_rate=gst_rate,
+        payout_fee=payout_fee,
+        settlement_delay_days=settlement_delay_days
+    )
+
+@st.cache_data(show_spinner=False)
+def cached_cash_forecast(df_tx, df_bank, days, gateway_fee_rate, gst_rate, payout_fee):
+    return get_cash_forecast(
+        df_rp=df_tx,
+        df_bank=df_bank,
+        days=days,
+        gateway_fee_rate=gateway_fee_rate,
+        gst_rate=gst_rate,
+        payout_fee=payout_fee
+    )
+
+@st.cache_data(show_spinner=False)
+def cached_tax_audit(df_tx, tds_config_json):
+    import json
+    tds_cfg = json.loads(tds_config_json) if isinstance(tds_config_json, str) else tds_config_json
+    return run_tax_audit(df_tx, tds_config=tds_cfg)
 
 # ----------------------------------------------------
 # INITIALIZE STATE VARIABLES
@@ -2186,24 +2223,40 @@ else:
     current_merchant_id = st.session_state.admin_filter_merchant
     current_store_id = st.session_state.admin_filter_store
 
-# Execute the relevant batch retrieval using dynamic platform parameters
+# Execute the relevant batch retrieval using cached dynamic platform parameters
 if dataset_option == "Razorpay Synthetic Batch (60 records)":
     delay_str = st.session_state.get("sys_settlement_delay", "T+2 Days")
     try:
         delay_days = int(delay_str.split('+')[1].split(' ')[0])
     except Exception:
         delay_days = 2
-    metrics, df_tx, df_unmatched, df_bank, bank_excs = run_3way_reconciliation(
+    
+    gw_rate = float(st.session_state.get("sys_gateway_fee", 2.0)) / 100.0
+    gst_r = float(st.session_state.get("sys_gst_rate", 18.0)) / 100.0
+    p_fee = float(st.session_state.get("sys_payout_fee", 5.0))
+    
+    metrics_raw, df_tx_raw, df_unmatched_raw, df_bank_raw, bank_excs_raw = cached_3way_reconciliation(
         merchant_id=current_merchant_id, 
         store_id=current_store_id,
-        gateway_fee_rate=float(st.session_state.get("sys_gateway_fee", 2.0)) / 100.0,
-        gst_rate=float(st.session_state.get("sys_gst_rate", 18.0)) / 100.0,
-        payout_fee=float(st.session_state.get("sys_payout_fee", 5.0)),
+        gateway_fee_rate=gw_rate,
+        gst_rate=gst_r,
+        payout_fee=p_fee,
         settlement_delay_days=delay_days
     )
+    # Fast shallow copies for session mutations
+    metrics = dict(metrics_raw)
+    df_tx = df_tx_raw.copy()
+    df_unmatched = df_unmatched_raw.copy()
+    df_bank = df_bank_raw.copy()
+    bank_excs = list(bank_excs_raw)
 else:
     # AUGUST 25 DATASET MOCK ENDPOINT (Adapt to current store)
-    metrics, df_tx, df_unmatched, df_bank, bank_excs = get_august_25_example_data(current_merchant_id or "flipkart", current_store_id or "fk_delhi")
+    m_raw, tx_raw, un_raw, b_raw, be_raw = get_august_25_example_data(current_merchant_id or "flipkart", current_store_id or "fk_delhi")
+    metrics = dict(m_raw)
+    df_tx = tx_raw.copy()
+    df_unmatched = un_raw.copy()
+    df_bank = b_raw.copy()
+    bank_excs = list(be_raw)
 
 # Filter internal orders global dataframe to scope it to tenant store
 if current_merchant_id and current_store_id:
@@ -2212,14 +2265,6 @@ elif current_merchant_id:
     df_orders_scoped = df_orders[df_orders['merchant_id'] == current_merchant_id].copy()
 else:
     df_orders_scoped = df_orders.copy()
-
-# Trigger dynamic dataset RAG export only when the active batch selection changes
-if st.session_state.current_indexed_batch != dataset_option:
-    st.session_state.current_indexed_batch = dataset_option
-    try:
-        export_data_for_rag(df_tx, df_orders_scoped, df_bank, current_merchant_id or "flipkart", current_store_id or "fk_delhi")
-    except Exception as e:
-        st.error(f"Failed to export data for RAG: {e}")
 
 # Handle deep linking and query parameters
 query_params = st.query_params
@@ -2292,14 +2337,19 @@ if len(st.session_state.resolved_exceptions) > 0:
     total_elements = len(df_tx) + len(df_unmatched)
     metrics['auto_match_accuracy_pct'] = round((metrics['auto_resolved_count'] / total_elements) * 100, 1)
 
-# Run forecasting and tax compliance checkers
-forecast_df = get_cash_forecast(
-    df_tx, df_bank, days=7,
+# Run cached forecasting and tax compliance checkers
+import json
+tds_json_str = json.dumps(st.session_state.get("sys_tds_config", {}))
+
+forecast_df = cached_cash_forecast(
+    df_tx=df_tx,
+    df_bank=df_bank,
+    days=7,
     gateway_fee_rate=float(st.session_state.get("sys_gateway_fee", 2.0)) / 100.0,
     gst_rate=float(st.session_state.get("sys_gst_rate", 18.0)) / 100.0,
     payout_fee=float(st.session_state.get("sys_payout_fee", 5.0))
 )
-tax_summary, tax_df = run_tax_audit(df_tx, tds_config=st.session_state.sys_tds_config)
+tax_summary, tax_df = cached_tax_audit(df_tx, tds_json_str)
 
 # ----------------------------------------------------
 # DATE FILTER HELPERS
@@ -3919,8 +3969,10 @@ elif st.session_state.page == "forecast":
     # Calculate days needed and run dynamic forecast
     days_needed = (end_date_val - forecast_start_date.date()).days + 1
     # Generate forecast up to at least the days requested with dynamic parameters
-    dynamic_forecast_df = get_cash_forecast(
-        df_tx, df_bank, days=max(7, days_needed),
+    dynamic_forecast_df = cached_cash_forecast(
+        df_tx=df_tx,
+        df_bank=df_bank,
+        days=max(7, days_needed),
         gateway_fee_rate=float(st.session_state.get("sys_gateway_fee", 2.0)) / 100.0,
         gst_rate=float(st.session_state.get("sys_gst_rate", 18.0)) / 100.0,
         payout_fee=float(st.session_state.get("sys_payout_fee", 5.0))

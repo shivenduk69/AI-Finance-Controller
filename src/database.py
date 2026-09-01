@@ -298,6 +298,22 @@ def init_db():
     )
     """)
     
+    # Create performance indexes on frequently queried columns
+    try:
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tx_merchant_store ON transactions (merchant_id, store_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tx_order ON transactions (order_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tx_status ON transactions (status)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_orders_merchant_store ON internal_orders (merchant_id, store_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_orders_status ON internal_orders (status)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_bank_date ON bank_statements (date, merchant_id, store_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tickets_status ON support_tickets (status, merchant_id, store_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_notifs_role ON notifications (role, merchant_id, store_id, is_read)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_exc_res_status ON exception_resolutions (status, merchant_id, store_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_doc_chunks_file ON document_chunks (file_name)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_msgs_conv ON ai_messages (conversation_id)")
+    except Exception as e:
+        print(f"Index creation notice: {e}")
+        
     conn.commit()
     
     # --- SEEDING PREDEFINED DATA ---
@@ -1438,7 +1454,7 @@ def get_users():
         conn.close()
 
 def reset_user_password(email, new_password):
-    """Resets a user's password."""
+    # Resets user password by email
     conn = get_connection()
     cursor = conn.cursor()
     is_pg = is_postgres_configured()
