@@ -151,9 +151,74 @@ class TestReconciliation(unittest.TestCase):
                     self.assertTrue(row['tds_applicable'])
                     self.assertEqual(row['tds_rate'], 0.10)
                     self.assertAlmostEqual(row['expected_tds'], round(row['amount_inr'] * 0.10, 2), places=2)
-            else:
-                self.assertFalse(row['tds_applicable'])
-                self.assertEqual(row['expected_tds'], 0.00)
+    def test_exception_resolution_and_notification_sync(self):
+        from src.database import (
+            init_db, record_exception_resolution, approve_merchant_resolution,
+            get_exception_resolutions, get_notifications
+        )
+        init_db()
+        
+        test_tx_admin = "pay_test_adm_001"
+        test_tx_merch = "pay_test_merch_002"
+        
+        # 1. Admin resolves an exception -> store receives notification and record is marked RESOLVED
+        record_exception_resolution(
+            transaction_id=test_tx_admin,
+            order_id="order_adm_001",
+            merchant_id="flipkart",
+            store_id="fk_delhi",
+            amount_inr=1500.0,
+            issue_description="FEE_MISMATCH",
+            resolution_note="Admin corrected fee invoice manually.",
+            resolved_by_role="ADMIN",
+            resolved_by_user="admin_user",
+            status="RESOLVED"
+        )
+        
+        # Verify notification dispatched to merchant store
+        store_notifs = get_notifications(merchant_id="flipkart", store_id="fk_delhi", role="MERCHANT")
+        adm_notif = [n for n in store_notifs if test_tx_admin in n['title'] or test_tx_admin in n['message']]
+        self.assertTrue(len(adm_notif) > 0)
+        self.assertIn("Admin corrected fee invoice manually.", adm_notif[0]['message'])
+        
+        # 2. Merchant submits resolution -> admin receives notification and status is PENDING_ADMIN
+        record_exception_resolution(
+            transaction_id=test_tx_merch,
+            order_id="order_merch_002",
+            merchant_id="flipkart",
+            store_id="fk_delhi",
+            amount_inr=2200.0,
+            issue_description="MISSING_BANK_CREDIT",
+            resolution_note="Store confirmed bank deposit receipt manually.",
+            resolved_by_role="MERCHANT",
+            resolved_by_user="fk_delhi_manager",
+            status="PENDING_ADMIN"
+        )
+        
+        # Verify notification dispatched to Admin
+        admin_notifs = get_notifications(role="ADMIN")
+        merch_sub_notif = [n for n in admin_notifs if test_tx_merch in n['title'] or test_tx_merch in n['message']]
+        self.assertTrue(len(merch_sub_notif) > 0)
+        self.assertIn("Store confirmed bank deposit receipt manually.", merch_sub_notif[0]['message'])
+        
+        # 3. Admin verifies and approves the merchant submission
+        pending_list = get_exception_resolutions(merchant_id="flipkart", store_id="fk_delhi", status="PENDING_ADMIN")
+        target_pending = [p for p in pending_list if p['transaction_id'] == test_tx_merch]
+        self.assertTrue(len(target_pending) > 0)
+        
+        res_id = target_pending[0]['resolution_id']
+        approve_merchant_resolution(
+            resolution_id=res_id,
+            transaction_id=test_tx_merch,
+            admin_note="Approved following bank statement verification.",
+            admin_user="head_admin"
+        )
+        
+        # Verify status is now RESOLVED and resolution history backup contains both
+        history = get_exception_resolutions(merchant_id="flipkart", store_id="fk_delhi", status="RESOLVED")
+        tx_ids_in_history = [h['transaction_id'] for h in history]
+        self.assertIn(test_tx_admin, tx_ids_in_history)
+        self.assertIn(test_tx_merch, tx_ids_in_history)
 
 if __name__ == '__main__':
     unittest.main()

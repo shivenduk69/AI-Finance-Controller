@@ -20,7 +20,9 @@ from src.tax_matcher import run_tax_audit
 # Import SQL database and RAG engine modules
 from src.database import (
     save_chat_message, get_chat_sessions, get_chat_history, init_db,
-    raise_support_ticket, get_support_tickets, resolve_support_ticket
+    raise_support_ticket, get_support_tickets, resolve_support_ticket,
+    record_exception_resolution, approve_merchant_resolution, get_exception_resolutions,
+    resolve_transaction_exception, get_notifications, mark_notification_as_read
 )
 from src.rag_engine import retrieve_relevant_context, build_document_index
 
@@ -354,6 +356,17 @@ if "user" not in st.session_state:
     st.session_state.user = None
 
 if not st.session_state.logged_in:
+    if st.session_state.get("clear_cookie_token"):
+        st.session_state.pop("clear_cookie_token")
+        import streamlit.components.v1 as components
+        components.html("""
+        <script>
+            try {
+                window.parent.document.cookie = "session_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC;";
+            } catch(e) {}
+        </script>
+        """, height=0, width=0)
+
     # Base64 encode logo.png for branding
     import base64
     base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -379,7 +392,8 @@ if not st.session_state.logged_in:
         }}
         
         /* Right column login container card */
-        div[data-testid="stVerticalBlockBorderWrapper"]:has(button[key="login_submit_btn"]) {{
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(input[type="password"]),
+        div[data-testid="stVerticalBlockBorderWrapper"]:has([data-testid="stForm"]) {{
             background: #FFFFFF !important;
             border: 1px solid #E2E8F0 !important;
             border-radius: 16px !important;
@@ -387,6 +401,13 @@ if not st.session_state.logged_in:
             box-shadow: 0 4px 24px rgba(0, 0, 0, 0.03) !important;
             max-width: 480px !important;
             margin: auto !important;
+        }}
+        
+        /* Remove extra border/padding from inner st.form */
+        div[data-testid="stForm"] {{
+            border: none !important;
+            padding: 0 !important;
+            background: transparent !important;
         }}
         
         /* Input overrides for login form */
@@ -403,7 +424,8 @@ if not st.session_state.logged_in:
         }}
         
         /* Secure Login Button */
-        div[data-testid="stButton"] button[key="login_submit_btn"] {{
+        div[data-testid="stFormSubmitButton"] button,
+        div[data-testid="stFormSubmitButton"] > button {{
             background: #1769E0 !important;
             color: #FFFFFF !important;
             border: none !important;
@@ -415,13 +437,14 @@ if not st.session_state.logged_in:
             transition: all 0.2s ease !important;
             margin-top: 6px !important;
         }}
-        div[data-testid="stButton"] button[key="login_submit_btn"]:hover {{
+        div[data-testid="stFormSubmitButton"] button:hover,
+        div[data-testid="stFormSubmitButton"] > button:hover {{
             background: #1558BD !important;
             transform: translateY(-1px) !important;
         }}
         
         /* Forgot Password button link */
-        div[data-testid="stButton"] button[key="login_forgot_btn"] {{
+        div[data-testid="stButton"] button {{
             background: transparent !important;
             color: #1769E0 !important;
             border: none !important;
@@ -433,7 +456,7 @@ if not st.session_state.logged_in:
             margin: 4px auto 0 auto !important;
             display: block !important;
         }}
-        div[data-testid="stButton"] button[key="login_forgot_btn"]:hover {{
+        div[data-testid="stButton"] button:hover {{
             text-decoration: underline !important;
             background: transparent !important;
         }}
@@ -581,43 +604,38 @@ if not st.session_state.logged_in:
             </div>
             """), unsafe_allow_html=True)
             
-            # Form Inputs
-            email = st.text_input("Corporate Email Address", placeholder="example@merchant.com", key="login_email")
-            password = st.text_input("Password", type="password", placeholder="••••••••••••", key="login_pass")
-            
-            st.markdown(clean_html("""
-            <div style="background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 8px; padding: 10px 14px; display: flex; align-items: center; gap: 8px; color: #2563EB; font-size: 12px; font-weight: 600; margin: 12px 0 16px 0;">
-                <span style="font-size: 14px;">🛡️</span>
-                <span>Predefined credentials for demo in README.</span>
-            </div>
-            """), unsafe_allow_html=True)
-            
-            login_clicked = st.button("Secure Login 🔒", use_container_width=True, key="login_submit_btn")
+            with st.form("login_form", clear_on_submit=False, border=False):
+                # Form Inputs
+                email = st.text_input("Corporate Email Address", placeholder="example@merchant.com", key="login_email")
+                password = st.text_input("Password", type="password", placeholder="••••••••••••", key="login_pass")
+                
+                st.markdown(clean_html("""
+                <div style="background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 8px; padding: 10px 14px; display: flex; align-items: center; gap: 8px; color: #2563EB; font-size: 12px; font-weight: 600; margin: 12px 0 16px 0;">
+                    <span style="font-size: 14px;">🛡️</span>
+                    <span>Predefined credentials for demo in README.</span>
+                </div>
+                """), unsafe_allow_html=True)
+                
+                login_clicked = st.form_submit_button("Secure Login 🔒", use_container_width=True)
             
             forgot_clicked = st.button("Forgot Password?", key="login_forgot_btn", use_container_width=True)
             
             if login_clicked:
-                if email.strip() and password.strip():
-                    from src.database import authenticate_user, log_action
-                    user = authenticate_user(email.strip(), password.strip())
+                email_clean = (email or "").strip()
+                password_clean = (password or "").strip()
+                if email_clean and password_clean:
+                    from src.database import authenticate_user, log_action, create_user_session
+                    user = authenticate_user(email_clean, password_clean)
                     if user:
                         st.session_state.logged_in = True
                         st.session_state.user = user
                         st.session_state.page = "dashboard" if user['role'] == 'MERCHANT' else "admin"
                         st.session_state.messages = []  # Clear chat
-                        log_action(user['user_id'], "User Login", f"Successful login. Role: {user['role']}, Merchant: {user['merchant_id']}, Store: {user['store_id']}")
-                        st.toast(f"Logged in successfully as {email}!", icon="\u2705")
-                        from src.database import create_user_session
                         session_token = create_user_session(user['user_id'])
-                        import streamlit.components.v1 as components
-                        components.html(f"""
-                        <script>
-                            const expires = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toUTCString();
-                            window.parent.document.cookie = "session_token={session_token}; path=/; expires=" + expires + "; SameSite=Lax";
-                            window.parent.location.reload();
-                        </script>
-                        """, height=0, width=0)
-                        st.stop()
+                        st.session_state.pending_cookie_token = session_token
+                        log_action(user['user_id'], "User Login", f"Successful login. Role: {user['role']}, Merchant: {user['merchant_id']}, Store: {user['store_id']}")
+                        st.toast(f"Logged in successfully as {email_clean}!", icon="✅")
+                        st.rerun()
                     else:
                         st.error("Authentication failed. Invalid email or password.")
                 else:
@@ -631,6 +649,19 @@ if not st.session_state.logged_in:
                 """), unsafe_allow_html=True)
             
     st.stop()
+
+# Set persistent session cookie in background if pending
+if st.session_state.get("pending_cookie_token"):
+    token_val = st.session_state.pop("pending_cookie_token")
+    import streamlit.components.v1 as components
+    components.html(f"""
+    <script>
+        try {{
+            const expires = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toUTCString();
+            window.parent.document.cookie = "session_token={token_val}; path=/; expires=" + expires + "; SameSite=Lax";
+        }} catch(e) {{}}
+    </script>
+    """, height=0, width=0)
 
 # ----------------------------------------------------
 # CSS DESIGN SYSTEM INJECTION
@@ -2045,10 +2076,22 @@ else:
     render_sidebar_item("Bank", "bank", "\u25A3")
     render_sidebar_item("Tax & TDS", "tax", "\u25A4")
     
+    st.sidebar.markdown('<div class="sidebar-section-header">SUPPORT & ALERTS</div>', unsafe_allow_html=True)
+    user_cur = st.session_state.user or {}
+    m_unread = 0
+    try:
+        from src.database import get_notifications
+        m_notifs = get_notifications(merchant_id=user_cur.get('merchant_id'), store_id=user_cur.get('store_id'), role='MERCHANT')
+        m_unread = len(m_notifs)
+    except Exception:
+        m_unread = 0
+    m_badge = f'<div class="sidebar-badge badge-blue">{m_unread}</div>' if m_unread > 0 else ""
+    render_sidebar_item("Notifications", "merchant_notifications", "♧", badge=m_badge)
+    render_sidebar_item("Raise Ticket", "tickets", "\U0001F39F")
+    
     st.sidebar.markdown('<div class="sidebar-section-header">INSIGHTS</div>', unsafe_allow_html=True)
     render_sidebar_item("AI Insights", "insights", "\u2726")
     render_sidebar_item("Cash Forecast", "forecast", "\u2197")
-    render_sidebar_item("Raise Ticket", "tickets", "\U0001F39F")
     
     st.sidebar.markdown('<div style="border-bottom: 1px solid rgba(255, 255, 255, 0.05); width: 84%; margin: 12px auto 14px auto;"></div>', unsafe_allow_html=True)
     render_sidebar_item("Settings", "settings", "\u2699")
@@ -2080,14 +2123,8 @@ if user:
         st.session_state.logged_in = False
         st.session_state.user = None
         st.session_state.page = "dashboard"
-        import streamlit.components.v1 as components
-        components.html("""
-        <script>
-            window.parent.document.cookie = "session_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC;";
-            window.parent.location.reload();
-        </script>
-        """, height=0, width=0)
-        st.stop()
+        st.session_state.clear_cookie_token = True
+        st.rerun()
 
 # ----------------------------------------------------
 # TOP HEADER BAR IMPLEMENTATION
@@ -2162,7 +2199,20 @@ if "search" in query_params:
             st.query_params.audit_tx = matches.iloc[0]['transaction_id']
             st.rerun()
 
-# Apply local exception resolutions dynamically
+# Apply exception resolutions dynamically from database and session state
+try:
+    db_resolutions = get_exception_resolutions(status='RESOLVED')
+    if "resolution_notes" not in st.session_state:
+        st.session_state.resolution_notes = {}
+    for r in db_resolutions:
+        tx_k = r['transaction_id']
+        if tx_k not in st.session_state.resolved_exceptions:
+            st.session_state.resolved_exceptions.append(tx_k)
+        if tx_k not in st.session_state.resolution_notes:
+            st.session_state.resolution_notes[tx_k] = r['resolution_note']
+except Exception:
+    pass
+
 if len(st.session_state.resolved_exceptions) > 0:
     if "resolution_notes" not in st.session_state:
         st.session_state.resolution_notes = {}
@@ -3041,161 +3091,261 @@ elif st.session_state.page == "transactions":
         </div>"""), unsafe_allow_html=True)
 
 # ----------------------------------------------------
-# PAGE 3: EXCEPTIONS QUEUE
+# PAGE 3: EXCEPTIONS QUEUE (SYNCHRONIZED & AUDITED)
 # ----------------------------------------------------
 elif st.session_state.page == "exceptions":
-    st.markdown("<h2>Exceptions Investigation Queue</h2>", unsafe_allow_html=True)
+    st.markdown("<h2>⚠ Exceptions Investigation & Resolution Queue</h2>", unsafe_allow_html=True)
     
-    # Active Exceptions count
+    user = st.session_state.user or {}
+    cur_m_id = user.get('merchant_id', current_merchant_id or 'flipkart')
+    cur_s_id = user.get('store_id', current_store_id or 'fk_delhi')
+    
+    # Active Exceptions from DataFrames
     exc_txs = df_tx[df_tx['resolution_status'] == 'NEEDS_REVIEW']
     exc_unmatched = df_unmatched[df_unmatched['resolution_status'] == 'NEEDS_REVIEW']
-    total_active_count = len(exc_txs) + len(exc_unmatched)
     
-    st.markdown(f"""
-    <div style="font-size: 1rem; color: var(--text-sec); margin-bottom: 20px;">
-        There are <strong style="color: var(--error);">{total_active_count} unresolved exceptions</strong> requiring review.
-    </div>
-    """, unsafe_allow_html=True)
+    # Fetch pending merchant resolution requests and resolved history from DB
+    store_pending = get_exception_resolutions(merchant_id=cur_m_id, store_id=cur_s_id, status='PENDING_ADMIN')
+    pending_tx_ids = set([p['transaction_id'] for p in store_pending])
     
-    # Filters
-    col_ef1, col_ef2, col_ef_search = st.columns([1, 1, 2])
-    with col_ef1:
-        severity_filter = st.selectbox(
-            "Exceptions Severity",
-            ["All Severities", "HIGH", "MEDIUM", "LOW"]
-        )
-    with col_ef2:
-        exc_type_filter = st.selectbox(
-            "Anomalies Classification",
-            ["All Exceptions", "Fee Mismatch", "Missing Order Link", "Bank Credit Missing", "Dispute Transaction"]
-        )
-    with col_ef_search:
-        exc_search = st.text_input(
-            "Search exception reference ID",
-            placeholder="Search transaction or order ID..."
-        )
+    store_resolved = get_exception_resolutions(merchant_id=cur_m_id, store_id=cur_s_id, status='RESOLVED')
+    
+    # Exclude pending items from the active queue so they don't appear unresolved
+    active_txs = exc_txs[~exc_txs['transaction_id'].isin(pending_tx_ids)]
+    active_unmatched = exc_unmatched[~exc_unmatched['order_id'].isin(pending_tx_ids)]
+    total_active_count = len(active_txs) + len(active_unmatched)
+    
+    m_tab1, m_tab2, m_tab3 = st.tabs([
+        f"⚡ Active Exceptions ({total_active_count})",
+        f"⏳ Pending Admin Verification ({len(store_pending)})",
+        f"📜 Resolution History & Backup ({len(store_resolved)})"
+    ])
+    
+    with m_tab1:
+        st.markdown(f"""
+        <div style="font-size: 0.95rem; color: var(--text-sec); margin-bottom: 16px;">
+            There are <strong style="color: var(--error);">{total_active_count} active exceptions</strong> requiring store review or correction.
+        </div>
+        """, unsafe_allow_html=True)
         
-    # Iterate and draw exception cards
-    exceptions_list = []
-    
-    # Add df_tx exceptions
-    for idx, row in exc_txs.iterrows():
-        # Determine Severity based on confidence
-        if row['confidence_score'] == 0:
-            severity = "HIGH"
-        elif row['confidence_score'] <= 0.2:
-            severity = "MEDIUM"
+        # Filters
+        col_ef1, col_ef2, col_ef_search = st.columns([1, 1, 2])
+        with col_ef1:
+            severity_filter = st.selectbox(
+                "Exceptions Severity",
+                ["All Severities", "HIGH", "MEDIUM", "LOW"],
+                key="m_exc_sev_filter"
+            )
+        with col_ef2:
+            exc_type_filter = st.selectbox(
+                "Anomalies Classification",
+                ["All Exceptions", "Fee Mismatch", "Missing Order Link", "Bank Credit Missing", "Dispute Transaction"],
+                key="m_exc_type_filter"
+            )
+        with col_ef_search:
+            exc_search = st.text_input(
+                "Search exception reference ID",
+                placeholder="Search transaction or order ID...",
+                key="m_exc_search_input"
+            )
+            
+        # Build active exceptions list
+        exceptions_list = []
+        for idx, row in active_txs.iterrows():
+            if row['confidence_score'] == 0:
+                severity = "HIGH"
+            elif row['confidence_score'] <= 0.2:
+                severity = "MEDIUM"
+            else:
+                severity = "LOW"
+                
+            ex_str = ", ".join([str(e).replace('₹', 'Rs.') for e in row['calculated_exceptions']])
+            exceptions_list.append({
+                'id': row['transaction_id'],
+                'ref_id': row['order_id'],
+                'type': 'Gateway Transaction',
+                'amount': row['amount_inr'],
+                'severity': severity,
+                'issue': ex_str,
+                'rec': "Audit Gateway charges and verify mappings.",
+                'raw_row': row
+            })
+            
+        for idx, row in active_unmatched.iterrows():
+            exceptions_list.append({
+                'id': row['order_id'],
+                'ref_id': 'Missing link',
+                'type': 'Internal Order Orphan',
+                'amount': row['amount_inr'],
+                'severity': 'HIGH',
+                'issue': "GATEWAY_PAYMENT_NOT_FOUND (Completed internally but no payment capture)",
+                'rec': "Contact merchant billing support or check database logs.",
+                'raw_row': row
+            })
+            
+        filtered_excs = []
+        for item in exceptions_list:
+            if severity_filter != "All Severities" and item['severity'] != severity_filter:
+                continue
+            if exc_type_filter != "All Exceptions":
+                if exc_type_filter == "Fee Mismatch" and "FEE" not in item['issue']:
+                    continue
+                if exc_type_filter == "Missing Order Link" and "ORDER" not in item['issue'] and "GATEWAY" not in item['issue']:
+                    continue
+                if exc_type_filter == "Bank Credit Missing" and "BANK" not in item['issue']:
+                    continue
+                if exc_type_filter == "Dispute Transaction" and "DISPUTE" not in item['issue']:
+                    continue
+            if exc_search.strip():
+                sq = exc_search.strip().lower()
+                if sq not in item['id'].lower() and sq not in str(item['ref_id']).lower():
+                    continue
+            filtered_excs.append(item)
+            
+        if not filtered_excs:
+            st.info("No active exceptions match the selected filters.")
         else:
-            severity = "LOW"
-            
-        ex_str = ", ".join([str(e).replace('₹', 'Rs.') for e in row['calculated_exceptions']])
-        
-        exceptions_list.append({
-            'id': row['transaction_id'],
-            'ref_id': row['order_id'],
-            'type': 'Gateway Transaction',
-            'amount': row['amount_inr'],
-            'severity': severity,
-            'issue': ex_str,
-            'rec': "Audit Gateway charges and verify mappings.",
-            'raw_row': row
-        })
-        
-    # Add unmatched orders
-    for idx, row in exc_unmatched.iterrows():
-        exceptions_list.append({
-            'id': row['order_id'],
-            'ref_id': 'Missing link',
-            'type': 'Internal Order Orphan',
-            'amount': row['amount_inr'],
-            'severity': 'HIGH',
-            'issue': "GATEWAY_PAYMENT_NOT_FOUND (Completed internally but no payment capture)",
-            'rec': "Contact merchant billing support or check database logs.",
-            'raw_row': row
-        })
-        
-    # Filter exceptions_list
-    filtered_excs = []
-    for item in exceptions_list:
-        if severity_filter != "All Severities" and item['severity'] != severity_filter:
-            continue
-            
-        if exc_type_filter != "All Exceptions":
-            if exc_type_filter == "Fee Mismatch" and "FEE" not in item['issue']:
-                continue
-            if exc_type_filter == "Missing Order Link" and "ORDER" not in item['issue'] and "GATEWAY" not in item['issue']:
-                continue
-            if exc_type_filter == "Bank Credit Missing" and "BANK" not in item['issue']:
-                continue
-            if exc_type_filter == "Dispute Transaction" and "DISPUTE" not in item['issue']:
-                continue
+            for ex in filtered_excs:
+                sev_class = ex['severity'].lower()
+                border_color = 'var(--error)' if ex['severity']=='HIGH' else ('var(--warning)' if ex['severity']=='MEDIUM' else '#3B82F6')
                 
-        if exc_search.strip():
-            sq = exc_search.strip().lower()
-            if sq not in item['id'].lower() and sq not in str(item['ref_id']).lower():
-                continue
-                
-        filtered_excs.append(item)
-        
-    # Draw exception rows
-    if not filtered_excs:
-        st.info("No exceptions found matching filters.")
-    else:
-        for ex in filtered_excs:
-            sev_class = ex['severity'].lower()
-            
-            st.markdown(f"""
-            <div style="background-color: #FFFFFF; border: 1px solid var(--border); border-left: 4px solid {'var(--error)' if ex['severity']=='HIGH' else ('var(--warning)' if ex['severity']=='MEDIUM' else '#3B82F6')}; padding: 16px; border-radius: 6px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                    <div>
-                        <span class="status-pill {sev_class}" style="margin-right: 8px;">{ex['severity']}</span>
-                        <strong style="font-size: 13.5px; color: var(--navy);">{ex['type']}: <code>{ex['id']}</code></strong>
+                st.markdown(f"""
+                <div style="background-color: #FFFFFF; border: 1px solid var(--border); border-left: 4px solid {border_color}; padding: 16px; border-radius: 6px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <div>
+                            <span class="status-pill {sev_class}" style="margin-right: 8px;">{ex['severity']}</span>
+                            <strong style="font-size: 13.5px; color: var(--navy);">{ex['type']}: <code>{ex['id']}</code></strong>
+                        </div>
+                        <strong style="color: var(--navy); font-size: 14.5px;">₹{ex['amount']:,.2f}</strong>
                     </div>
-                    <strong style="color: var(--navy); font-size: 14.5px;">₹{ex['amount']:,.2f}</strong>
+                    <div style="font-size: 13px; color: var(--navy); margin-bottom: 8px; font-weight: 500;">
+                        <strong>Discrepancy Details:</strong> <code>{ex['issue']}</code>
+                    </div>
+                    <div style="font-size: 12px; color: var(--text-sec); margin-bottom: 4px;">
+                        <strong>AI Recommended Action:</strong> {ex['rec']}
+                    </div>
                 </div>
-                <div style="font-size: 13px; color: var(--navy); margin-bottom: 8px; font-weight: 500;">
-                    <strong>Discrepancy Details:</strong> <code>{ex['issue']}</code>
-                </div>
-                <div style="font-size: 12px; color: var(--text-sec); margin-bottom: 12px;">
-                    <strong>AI Recommended Action:</strong> {ex['rec']}
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # Action row buttons
-            col_b1, col_b2, col_b3, col_bsp = st.columns([1, 1.2, 1, 3.5])
-            with col_b1:
-                # View details redirect
-                if st.button("View Details", key=f"exc_view_{ex['id']}", use_container_width=True):
-                    st.query_params.clear()
-                    if ex['type'] == 'Gateway Transaction':
+                """, unsafe_allow_html=True)
+                
+                col_b1, col_b2 = st.columns([1, 1.2])
+                with col_b1:
+                    if st.button("View Details", key=f"exc_view_{ex['id']}", use_container_width=True):
+                        st.query_params.clear()
                         st.session_state.page = "transactions"
                         st.session_state.audit_tx = ex['id']
                         st.query_params.page = "transactions"
                         st.query_params.audit_tx = ex['id']
-                    else:
-                        st.session_state.page = "admin"
-                        st.session_state.admin_page = "Data Sources"
-                        st.query_params.page = "admin"
-                        st.query_params.admin_page = "Data Sources"
-                    st.rerun()
-            with col_b2:
-                if st.button("Explain with AI", key=f"exc_explain_{ex['id']}", use_container_width=True):
-                    # Set audit ID and trigger explanation
-                    st.session_state.page = "transactions"
-                    st.session_state.audit_tx = ex['id']
-                    st.session_state.explain_tx = ex['id']
-                    st.query_params.clear()
-                    st.query_params.page = "transactions"
-                    st.query_params.audit_tx = ex['id']
-                    st.query_params.explain_tx = ex['id']
-                    st.rerun()
-            with col_b3:
-                # Resolve exception locally!
-                if st.button("Resolve", key=f"exc_resolve_{ex['id']}", use_container_width=True):
-                    st.session_state.resolved_exceptions.append(ex['id'])
-                    st.success(f"Discrepancy resolved for {ex['id']}.")
-                    st.rerun()
+                        st.rerun()
+                with col_b2:
+                    if st.button("Explain with AI", key=f"exc_explain_{ex['id']}", use_container_width=True):
+                        st.session_state.page = "transactions"
+                        st.session_state.audit_tx = ex['id']
+                        st.session_state.explain_tx = ex['id']
+                        st.query_params.clear()
+                        st.query_params.page = "transactions"
+                        st.query_params.audit_tx = ex['id']
+                        st.query_params.explain_tx = ex['id']
+                        st.rerun()
+                        
+                with st.expander(f"📝 Resolve & Submit for Admin Verification ({ex['id']})"):
+                    m_note = st.text_input(
+                        "Store Resolution Explanation / Audit Note",
+                        placeholder="Explain resolution (e.g., Manual refund issued / Proof verified / Bank credit reconciled)...",
+                        key=f"m_note_{ex['id']}"
+                    )
+                    if st.button("Submit Resolution to Admin", key=f"btn_sub_m_{ex['id']}"):
+                        if m_note.strip():
+                            record_exception_resolution(
+                                transaction_id=ex['id'],
+                                order_id=str(ex['ref_id']) if ex['ref_id'] != 'Missing link' else '',
+                                merchant_id=cur_m_id,
+                                store_id=cur_s_id,
+                                amount_inr=ex['amount'],
+                                issue_description=ex['issue'],
+                                resolution_note=m_note.strip(),
+                                resolved_by_role="MERCHANT",
+                                resolved_by_user=user.get('user_id', f"{cur_m_id}_{cur_s_id}"),
+                                status="PENDING_ADMIN"
+                            )
+                            st.success(f"Resolution submitted for {ex['id']}! Razorpay Admin has been notified to manually verify and finalize.")
+                            st.rerun()
+                        else:
+                            st.error("Please enter a resolution explanation for Admin verification.")
+                            
+                st.markdown("<div style='margin-bottom: 8px;'></div>", unsafe_allow_html=True)
+                
+    with m_tab2:
+        st.markdown(f"""
+        <div style="font-size: 0.95rem; color: var(--text-sec); margin-bottom: 16px;">
+            The following <strong style="color: #D97706;">{len(store_pending)} exceptions</strong> have been submitted by your store and are awaiting Razorpay Administrator verification.
+        </div>
+        """, unsafe_allow_html=True)
+        
+        if not store_pending:
+            st.info("No exceptions currently pending admin verification for your store.")
+        else:
+            for p in store_pending:
+                st.markdown(f"""
+                <div style="background-color: #FFFFFF; border: 1px solid #FDE68A; border-left: 5px solid #D97706; padding: 16px; border-radius: 6px; margin-bottom: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <strong style="color: #172B4D; font-size: 14px;">Transaction: <code>{p['transaction_id']}</code> {f"(Order: <code>{p['order_id']}</code>)" if p['order_id'] else ""}</strong>
+                        <span style="background-color: #FEF3C7; color: #92400E; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; border: 1px solid #FDE68A;">⏳ Awaiting Admin Approval</span>
+                    </div>
+                    <div style="font-size: 12.5px; color: #6B7C93; margin-bottom: 8px;">
+                        Amount: <strong style="color: #172B4D;">₹{p['amount_inr']:,.2f}</strong> | Submitted by: <strong>{p['resolved_by_user']}</strong> | Time: {p['created_at']}
+                    </div>
+                    <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; padding: 8px 12px; border-radius: 4px; font-size: 12.5px; color: #1E293B;">
+                        <strong>Submitted Store Note:</strong> {p['resolution_note']}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+    with m_tab3:
+        st.markdown(f"""
+        <div style="font-size: 0.95rem; color: var(--text-sec); margin-bottom: 16px;">
+            Complete audit trail of <strong style="color: #10B981;">{len(store_resolved)} resolved discrepancies</strong> for your store.
+        </div>
+        """, unsafe_allow_html=True)
+        
+        if not store_resolved:
+            st.info("No resolved exception history recorded yet.")
+        else:
+            col_hx1, col_hx2 = st.columns([3, 1.2])
+            with col_hx1:
+                total_res_val = sum([r['amount_inr'] for r in store_resolved])
+                st.markdown(f"**Total Discrepancy Volume Resolved:** `₹{total_res_val:,.2f}` across `{len(store_resolved)}` records.")
+            with col_hx2:
+                df_store_res = pd.DataFrame(store_resolved)
+                st.download_button(
+                    "📥 Export Resolution Backup (CSV)",
+                    data=df_store_res.to_csv(index=False),
+                    file_name=f"store_resolution_history_{cur_m_id}_{cur_s_id}_{datetime.now().strftime('%Y%m%d')}.csv",
+                    mime="text/csv",
+                    key="btn_export_store_res",
+                    use_container_width=True
+                )
+                
+            st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+            
+            for r in store_resolved:
+                resolved_role_badge = "🛡️ Razorpay Admin" if r['resolved_by_role'] == 'ADMIN' else f"🏬 Store ({r['resolved_by_user']})"
+                st.markdown(f"""
+                <div style="background-color: #FFFFFF; border: 1px solid #E2E8F0; border-left: 5px solid #10B981; padding: 16px; border-radius: 6px; margin-bottom: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <strong style="color: #172B4D; font-size: 14px;">Transaction: <code>{r['transaction_id']}</code> {f"(Order: <code>{r['order_id']}</code>)" if r['order_id'] else ""}</strong>
+                        <span style="background-color: #ECFDF5; color: #047857; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; border: 1px solid #A7F3D0;">✓ RESOLVED</span>
+                    </div>
+                    <div style="font-size: 12px; color: #6B7C93; margin-bottom: 8px;">
+                        Amount: <strong style="color: #172B4D;">₹{r['amount_inr']:,.2f}</strong> | Resolved by: <strong>{resolved_role_badge}</strong> | Timestamp: {r['created_at']}
+                    </div>
+                    <div style="font-size: 12px; color: #64748B; margin-bottom: 6px;">
+                        <strong>Original Discrepancy:</strong> <code>{r['issue_description']}</code>
+                    </div>
+                    <div style="background-color: #F0FDF4; border: 1px solid #BBF7D0; padding: 8px 12px; border-radius: 4px; font-size: 12.5px; color: #166534;">
+                        <strong>Resolution Audit Trail:</strong> {r['resolution_note']}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
 
 # ----------------------------------------------------
 # PAGE 4: SETTLEMENTS LEDGER
@@ -3928,6 +4078,51 @@ elif st.session_state.page == "tickets":
                 st.markdown("</div>", unsafe_allow_html=True)
 
 # ----------------------------------------------------
+# MERCHANT SUBPAGE: NOTIFICATIONS HUB
+# ----------------------------------------------------
+elif st.session_state.page in ["notifications", "merchant_notifications"]:
+    st.markdown("<h2>♧ Store Notifications & Operational Alerts</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='color: var(--text-sec); font-size: 14px;'>Real-time exception resolutions from Razorpay Admin, nodal settlement alerts, and compliance updates.</p>", unsafe_allow_html=True)
+    
+    user = st.session_state.user or {}
+    cur_m = user.get('merchant_id', current_merchant_id or 'flipkart')
+    cur_s = user.get('store_id', current_store_id or 'fk_delhi')
+    
+    m_notifs = get_notifications(user_id=user.get('user_id'), merchant_id=cur_m, store_id=cur_s, role='MERCHANT')
+    
+    col_mn1, col_mn2 = st.columns([3, 1])
+    with col_mn1:
+        st.markdown(f"**Unread Store Alerts:** `{len(m_notifs)}`")
+    with col_mn2:
+        if m_notifs and st.button("Mark All as Read", key="btn_mark_all_merchant_notifs"):
+            for n in m_notifs:
+                mark_notification_as_read(n['notification_id'])
+            st.success("All store alerts marked as read.")
+            st.rerun()
+            
+    st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+    
+    if m_notifs:
+        for n in m_notifs:
+            n_id = n.get('notification_id')
+            title = n.get('title', 'Store Alert')
+            msg = n.get('message', '')
+            created = n.get('created_at', 'Just now')
+            
+            with st.container(border=True):
+                c_text, c_btn = st.columns([4.2, 1])
+                with c_text:
+                    st.markdown(f"**🔔 {title}**")
+                    st.markdown(f"<p style='color: #475569; font-size: 13.5px; margin: 4px 0;'>{msg}</p>", unsafe_allow_html=True)
+                    st.caption(f"Received: {created}")
+                with c_btn:
+                    if st.button("Mark as Read", key=f"btn_read_mnotif_{n_id}", use_container_width=True):
+                        mark_notification_as_read(n_id)
+                        st.rerun()
+    else:
+        st.info("No unread alerts for your store.")
+
+# ----------------------------------------------------
 # ADMIN PAGE 1: OVERVIEW / DASHBOARD (REDESIGNED)
 # ----------------------------------------------------
 elif st.session_state.page == "admin":
@@ -4561,15 +4756,15 @@ elif st.session_state.page == "admin":
 # ----------------------------------------------------
 elif st.session_state.page == "admin_exceptions":
     st.markdown("<h2>⚠ Global Exception Command Center</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='color: var(--text-sec); font-size: 14px;'>Monitor, debug, and resolve matching exceptions across all merchants and stores.</p>", unsafe_allow_html=True)
+    st.markdown("<p style='color: var(--text-sec); font-size: 14px;'>Monitor, debug, verify store resolutions, and execute manual reconciliations across all merchants.</p>", unsafe_allow_html=True)
     
-    from src.database import get_merchants, get_stores, resolve_transaction_exception
+    from src.database import get_merchants, get_stores, resolve_transaction_exception, approve_merchant_resolution, get_exception_resolutions
     merchants = get_merchants()
     
-    col_m_sel, col_s_sel = st.columns(2)
+    col_m_sel, col_s_sel, col_search = st.columns([1, 1, 1.7])
     with col_m_sel:
         m_opts = ["All Merchants"] + [m['merchant_id'] for m in merchants]
-        m_sel = st.selectbox("Filter Merchant Entity", m_opts)
+        m_sel = st.selectbox("Filter Merchant Entity", m_opts, key="adm_exc_m_sel")
         if m_sel == "All Merchants":
             st.session_state.admin_filter_merchant = None
             st.session_state.admin_filter_store = None
@@ -4580,63 +4775,191 @@ elif st.session_state.page == "admin_exceptions":
         if st.session_state.admin_filter_merchant:
             stores = get_stores(st.session_state.admin_filter_merchant)
             s_opts = ["All Stores"] + [s['store_id'] for s in stores]
-            s_sel = st.selectbox("Filter Store Location", s_opts)
+            s_sel = st.selectbox("Filter Store Location", s_opts, key="adm_exc_s_sel")
             if s_sel == "All Stores":
                 st.session_state.admin_filter_store = None
             else:
                 st.session_state.admin_filter_store = s_sel
         else:
-            st.selectbox("Filter Store Location", ["All Stores"], disabled=True)
+            st.selectbox("Filter Store Location", ["All Stores"], disabled=True, key="adm_exc_s_sel_dis")
             st.session_state.admin_filter_store = None
+
+    with col_search:
+        search_query = st.text_input("Search ID", placeholder="Search pay_xxx or order_xxx...", key="adm_exc_search")
             
-    st.markdown("### Platform Exception Ledger")
+    # Fetch merchant-submitted pending resolutions
+    pending_merchant_resolutions = get_exception_resolutions(
+        merchant_id=st.session_state.admin_filter_merchant,
+        store_id=st.session_state.admin_filter_store,
+        status='PENDING_ADMIN'
+    )
+    pending_map = {p['transaction_id']: p for p in pending_merchant_resolutions}
     
-    excs_tx = df_tx[df_tx['calculated_exceptions'].apply(lambda x: len(x) > 0 if isinstance(x, list) else False)]
+    # Fetch global resolved history from DB
+    resolved_history = get_exception_resolutions(
+        merchant_id=st.session_state.admin_filter_merchant,
+        store_id=st.session_state.admin_filter_store,
+        status='RESOLVED'
+    )
     
-    if excs_tx.empty:
-        st.info("No active exceptions detected in the selected filter.")
-    else:
-        for idx, row in excs_tx.iterrows():
-            bg_c, text_c, border_c, status_lbl, severity = get_mismatch_color_tuple(row['calculated_exceptions'], row['resolution_status'])
-            m_id_upper = row['merchant_id'].upper()
-            s_loc_upper = row['store_id'].split('_')[-1].upper()
-            amt_formatted = f"{row['amount_inr']:.2f}"
-            method_val = row['method']
+    excs_tx = df_tx[df_tx['calculated_exceptions'].apply(lambda x: len(x) > 0 if isinstance(x, list) else False)].copy()
+    
+    if st.session_state.admin_filter_merchant:
+        excs_tx = excs_tx[excs_tx['merchant_id'].str.lower() == st.session_state.admin_filter_merchant.lower()]
+    if st.session_state.admin_filter_store:
+        excs_tx = excs_tx[excs_tx['store_id'].str.lower() == st.session_state.admin_filter_store.lower()]
+        
+    if search_query and search_query.strip():
+        q = search_query.strip().lower()
+        excs_tx = excs_tx[
+            excs_tx['transaction_id'].astype(str).str.lower().str.contains(q, na=False) |
+            excs_tx['order_id'].astype(str).str.lower().str.contains(q, na=False) |
+            excs_tx['method'].astype(str).str.lower().str.contains(q, na=False) |
+            excs_tx['calculated_exceptions'].apply(lambda el: any(q in str(x).lower() for x in el) if isinstance(el, list) else False)
+        ]
+        resolved_history = [
+            r for r in resolved_history
+            if q in r['transaction_id'].lower() or q in str(r['order_id']).lower() or q in str(r['resolution_note']).lower()
+        ]
+    
+    adm_tab1, adm_tab2 = st.tabs([
+        f"⚡ Platform Exceptions Queue ({len(excs_tx)})",
+        f"📜 Resolution History & Backup Archive ({len(resolved_history)})"
+    ])
+    
+    with adm_tab1:
+        if pending_merchant_resolutions:
+            st.warning(f"🔔 **Action Required:** `{len(pending_merchant_resolutions)}` store-submitted resolution(s) awaiting Admin verification and approval.")
             
-            pills_html = get_exception_pills_html(row['calculated_exceptions'])
-            ex_card_html = (
-                f'<div style="background-color: #FFFFFF; border: 1px solid #E2E8F0; border-left: 5px solid {text_c}; padding: 16px; border-radius: 6px; margin-bottom: 12px; font-family: \'Inter\', sans-serif; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">'
-                '    <div style="display:flex; justify-content:space-between; align-items:center;">'
-                f'        <strong style="color:#172B4D; font-size:13.5px;">Transaction Ref: <code>{row["transaction_id"]}</code> (Order Ref: <code>{row["order_id"]}</code>)</strong>'
-                f'        <span style="font-weight:700; font-size:11px; padding:2px 8px; border-radius:4px; color:{text_c}; background-color:{bg_c}; border:1px solid {border_c};">{status_lbl}</span>'
-                '    </div>'
-                '    <div style="font-size:12px; color:#6B7C93; margin-top:4px;">'
-                f'        Merchant: <strong>{m_id_upper}</strong> | Store: <strong>{s_loc_upper}</strong> | Amount: <strong style="color:#172B4D;">INR {amt_formatted}</strong> | Method: {method_val}'
-                '    </div>'
-                '    <div style="font-size:13px; margin: 8px 0;">'
-                f'        {pills_html}'
-                '    </div>'
-            )
-            st.markdown(ex_card_html, unsafe_allow_html=True)
-            
-            if row['resolution_status'] == 'NEEDS_REVIEW':
-                with st.expander(f"Resolve Exception for {row['transaction_id']}"):
-                    note = st.text_input("Audit Resolution Note", key=f"note_{row['transaction_id']}")
-                    if st.button("Apply Manual Correction", key=f"btn_res_{row['transaction_id']}"):
-                        if note.strip():
-                            resolve_transaction_exception(row['transaction_id'], note.strip())
-                            st.success(f"Transaction {row['transaction_id']} resolved successfully.")
-                            st.rerun()
-                        else:
-                            st.error("Please add resolution notes for audit tracking.")
-            else:
-                st.markdown(
-                    '<div style="margin-top: 8px; padding: 8px 12px; background-color: #F0FDF4; border-left: 3px solid #10B981; border-radius: 4px; font-size: 12.5px; color:#1E3A1E;">\n'
-                    f'    <strong>Corrected Resolution:</strong> {row.get("resolution_note", "Auto-resolved during engine check")}\n'
-                    '</div>',
-                    unsafe_allow_html=True
+        if excs_tx.empty:
+            st.info("No active platform exceptions detected matching the selected filter or search query.")
+        else:
+            for idx, row in excs_tx.iterrows():
+                bg_c, text_c, border_c, status_lbl, severity = get_mismatch_color_tuple(row['calculated_exceptions'], row['resolution_status'])
+                m_id_upper = row['merchant_id'].upper()
+                s_loc_upper = row['store_id'].split('_')[-1].upper()
+                amt_formatted = f"{row['amount_inr']:.2f}"
+                method_val = row['method']
+                tx_id = row['transaction_id']
+                
+                pills_html = get_exception_pills_html(row['calculated_exceptions'])
+                ex_card_html = (
+                    f'<div style="background-color: #FFFFFF; border: 1px solid #E2E8F0; border-left: 5px solid {text_c}; padding: 16px; border-radius: 6px; margin-bottom: 12px; font-family: \'Inter\', sans-serif; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">'
+                    '    <div style="display:flex; justify-content:space-between; align-items:center;">'
+                    f'        <strong style="color:#172B4D; font-size:13.5px;">Transaction Ref: <code>{tx_id}</code> (Order Ref: <code>{row["order_id"]}</code>)</strong>'
+                    f'        <span style="font-weight:700; font-size:11px; padding:2px 8px; border-radius:4px; color:{text_c}; background-color:{bg_c}; border:1px solid {border_c};">{status_lbl}</span>'
+                    '    </div>'
+                    '    <div style="font-size:12px; color:#6B7C93; margin-top:4px;">'
+                    f'        Merchant: <strong>{m_id_upper}</strong> | Store: <strong>{s_loc_upper}</strong> | Amount: <strong style="color:#172B4D;">INR {amt_formatted}</strong> | Method: {method_val}'
+                    '    </div>'
+                    '    <div style="font-size:13px; margin: 8px 0;">'
+                    f'        {pills_html}'
+                    '    </div>'
                 )
-            st.markdown("</div>", unsafe_allow_html=True)
+                st.markdown(ex_card_html, unsafe_allow_html=True)
+                
+                # Check if this transaction has a pending merchant resolution
+                if tx_id in pending_map and row['resolution_status'] == 'NEEDS_REVIEW':
+                    p_info = pending_map[tx_id]
+                    st.markdown(f"""
+                    <div style="background-color: #FEF3C7; border: 1px solid #FDE68A; border-left: 4px solid #D97706; padding: 10px 14px; border-radius: 6px; margin: 4px 0 10px 0; font-size: 13px; color: #92400E;">
+                        <strong>🏬 Store Submitted Resolution:</strong> {p_info['resolution_note']}<br/>
+                        <span style="font-size: 11.5px; color: #78350F;">Submitted by <strong>{p_info['resolved_by_user']}</strong> ({p_info['store_id'].upper()}) at {p_info['created_at']}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    with st.expander(f"✓ Verify & Approve Store Resolution for {tx_id}", expanded=True):
+                        adm_approval_note = st.text_input(
+                            "Admin Approval Note (Sent to Merchant)",
+                            value=f"Approved store resolution: {p_info['resolution_note']}",
+                            key=f"adm_app_note_{tx_id}"
+                        )
+                        if st.button("✓ Approve & Finalize Resolution (Notify Store)", key=f"btn_app_{tx_id}", type="primary"):
+                            approve_merchant_resolution(
+                                resolution_id=p_info['resolution_id'],
+                                transaction_id=tx_id,
+                                admin_note=adm_approval_note.strip(),
+                                admin_user=st.session_state.user.get('user_id', 'admin') if st.session_state.user else 'admin'
+                            )
+                            st.success(f"Resolution verified and approved for {tx_id}! Store has been notified.")
+                            st.rerun()
+                            
+                elif row['resolution_status'] == 'NEEDS_REVIEW':
+                    with st.expander(f"Resolve Exception for {tx_id}"):
+                        note = st.text_input("Audit Resolution Note", placeholder="Enter audit explanation for merchant store...", key=f"note_{tx_id}")
+                        if st.button("Apply Manual Correction (Notify Store)", key=f"btn_res_{tx_id}"):
+                            if note.strip():
+                                exc_desc = ", ".join(row['calculated_exceptions']) if isinstance(row['calculated_exceptions'], list) else str(row['calculated_exceptions'])
+                                resolve_transaction_exception(
+                                    transaction_id=tx_id,
+                                    note=note.strip(),
+                                    order_id=row['order_id'],
+                                    merchant_id=row['merchant_id'],
+                                    store_id=row['store_id'],
+                                    amount_inr=row['amount_inr'],
+                                    issue_description=exc_desc,
+                                    resolved_by_role="ADMIN",
+                                    resolved_by_user=st.session_state.user.get('user_id', 'admin') if st.session_state.user else 'admin'
+                                )
+                                st.success(f"Transaction {tx_id} resolved successfully! Store {row['store_id']} notified.")
+                                st.rerun()
+                            else:
+                                st.error("Please add resolution notes for audit tracking.")
+                else:
+                    st.markdown(
+                        '<div style="margin-top: 8px; padding: 8px 12px; background-color: #F0FDF4; border-left: 3px solid #10B981; border-radius: 4px; font-size: 12.5px; color:#1E3A1E;">\n'
+                        f'    <strong>Corrected Resolution:</strong> {row.get("resolution_note", "Auto-resolved during engine check")}\n'
+                        '</div>',
+                        unsafe_allow_html=True
+                    )
+                st.markdown("</div>", unsafe_allow_html=True)
+                
+    with adm_tab2:
+        st.markdown(f"""
+        <div style="font-size: 0.95rem; color: var(--text-sec); margin-bottom: 16px;">
+            Platform-wide historical archive of <strong style="color: #10B981;">{len(resolved_history)} resolved exceptions</strong> with full audit notes.
+        </div>
+        """, unsafe_allow_html=True)
+        
+        if not resolved_history:
+            st.info("No platform resolution history records found matching criteria.")
+        else:
+            col_gx1, col_gx2 = st.columns([3, 1.2])
+            with col_gx1:
+                total_vol = sum([r['amount_inr'] for r in resolved_history])
+                st.markdown(f"**Total Resolved Volume:** `₹{total_vol:,.2f}` across `{len(resolved_history)}` exceptions.")
+            with col_gx2:
+                df_global_res = pd.DataFrame(resolved_history)
+                st.download_button(
+                    "📥 Export Global Backup (CSV)",
+                    data=df_global_res.to_csv(index=False),
+                    file_name=f"global_resolution_backup_{datetime.now().strftime('%Y%m%d')}.csv",
+                    mime="text/csv",
+                    key="btn_export_adm_res",
+                    use_container_width=True
+                )
+                
+            st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+            
+            for r in resolved_history:
+                role_str = "🛡️ Razorpay Admin" if r['resolved_by_role'] == 'ADMIN' else f"🏬 Merchant Store ({r['resolved_by_user']})"
+                st.markdown(f"""
+                <div style="background-color: #FFFFFF; border: 1px solid #E2E8F0; border-left: 5px solid #10B981; padding: 16px; border-radius: 6px; margin-bottom: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <strong style="color: #172B4D; font-size: 14px;">Transaction: <code>{r['transaction_id']}</code> {f"(Order: <code>{r['order_id']}</code>)" if r['order_id'] else ""}</strong>
+                        <span style="background-color: #ECFDF5; color: #047857; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; border: 1px solid #A7F3D0;">✓ RESOLVED</span>
+                    </div>
+                    <div style="font-size: 12px; color: #6B7C93; margin-bottom: 6px;">
+                        Merchant: <strong>{(r['merchant_id'] or 'Flipkart').upper()}</strong> | Store: <strong>{(r['store_id'] or 'fk_delhi').split('_')[-1].upper()}</strong> | Amount: <strong style="color: #172B4D;">₹{r['amount_inr']:,.2f}</strong> | Resolved by: <strong>{role_str}</strong> | Time: {r['created_at']}
+                    </div>
+                    <div style="font-size: 12px; color: #64748B; margin-bottom: 6px;">
+                        <strong>Original Discrepancy:</strong> <code>{r['issue_description']}</code>
+                    </div>
+                    <div style="background-color: #F0FDF4; border: 1px solid #BBF7D0; padding: 8px 12px; border-radius: 4px; font-size: 12.5px; color: #166534;">
+                        <strong>Audit Resolution Trail:</strong> {r['resolution_note']}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
 
 # ----------------------------------------------------
 # ADMIN PAGE 3: TICKET RESOLVER

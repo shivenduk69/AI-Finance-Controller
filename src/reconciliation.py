@@ -2,7 +2,7 @@ import os
 import pandas as pd
 from datetime import datetime, timedelta
 
-def run_3way_reconciliation(merchant_id=None, store_id=None):
+def run_3way_reconciliation(merchant_id=None, store_id=None, gateway_fee_rate=0.02, gst_rate=0.18, payout_fee=5.0, settlement_delay_days=2):
     from src.database import load_financial_data, is_db_empty
     from src.upload_pipeline import run_pipeline
     
@@ -19,7 +19,7 @@ def run_3way_reconciliation(merchant_id=None, store_id=None):
     df_bank['date_dt'] = pd.to_datetime(df_bank['date'], format="%d-%m-%Y", errors='coerce')
     
     # We will compute the expected bank settlement date for each gateway transaction
-    # Payments settle T+2
+    # Payments settle T+settlement_delay_days
     # Payouts & Refunds settle T+0 (same day)
     settlement_dates = []
     for idx, row in df_rp.iterrows():
@@ -28,7 +28,7 @@ def run_3way_reconciliation(merchant_id=None, store_id=None):
             settlement_dates.append(None)
             continue
         if row['type'] == 'PAYMENT':
-            settlement_dates.append(dt + timedelta(days=2))
+            settlement_dates.append(dt + timedelta(days=int(settlement_delay_days)))
         else:
             settlement_dates.append(dt)
     df_rp['expected_settlement_dt'] = settlement_dates
@@ -135,18 +135,18 @@ def run_3way_reconciliation(merchant_id=None, store_id=None):
             exceptions.append("DISPUTED_TRANSACTION")
             confidence = min(confidence, 0)
             
-        # Rule 4: Fee & Tax Calculations
+        # Rule 4: Fee & Tax Calculations (Dynamic benchmark comparison)
         if tx_type == 'PAYMENT':
             if status == 'failed':
-                expected_fee = round(amount * 0.02, 2)
-                expected_tax = round(expected_fee * 0.18, 2)
+                expected_fee = round(amount * gateway_fee_rate, 2)
+                expected_tax = round(expected_fee * gst_rate, 2)
             else:
                 if method == 'netbanking' and abs(rec_fee) < 0.01:
                     expected_fee = 0.0
                     expected_tax = 0.0
                 else:
-                    expected_fee = round(amount * 0.02, 2)
-                    expected_tax = round(expected_fee * 0.18, 2)
+                    expected_fee = round(amount * gateway_fee_rate, 2)
+                    expected_tax = round(expected_fee * gst_rate, 2)
             
             # Tolerances
             if abs(rec_fee - expected_fee) > 0.05:
@@ -157,8 +157,8 @@ def run_3way_reconciliation(merchant_id=None, store_id=None):
                 confidence = min(confidence, 30)
                 
         elif tx_type == 'PAYOUT':
-            expected_fee = 5.0
-            expected_tax = 0.90
+            expected_fee = float(payout_fee)
+            expected_tax = round(expected_fee * gst_rate, 2)
             if abs(rec_fee - expected_fee) > 0.01:
                 exceptions.append(f"PAYOUT_FEE_MISMATCH (Expected: ₹{expected_fee:.2f}, Recorded: ₹{rec_fee:.2f})")
                 confidence = min(confidence, 30)
@@ -167,8 +167,8 @@ def run_3way_reconciliation(merchant_id=None, store_id=None):
                 confidence = min(confidence, 30)
                 
         elif tx_type == 'REFUND':
-            expected_fee = round(amount * 0.02, 2)
-            expected_tax = round(expected_fee * 0.18, 2)
+            expected_fee = round(amount * gateway_fee_rate, 2)
+            expected_tax = round(expected_fee * gst_rate, 2)
             if abs(rec_fee - expected_fee) > 0.05:
                 exceptions.append(f"REFUND_FEE_MISMATCH (Expected: ₹{expected_fee:.2f}, Recorded: ₹{rec_fee:.2f})")
                 confidence = min(confidence, 30)

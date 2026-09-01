@@ -3,19 +3,9 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 
-def get_cash_forecast(df_rp, df_bank, days=7):
+def get_cash_forecast(df_rp, df_bank, days=7, gateway_fee_rate=0.02, gst_rate=0.18, payout_fee=5.0):
     """
-    Generates a 7-day cash flow forecast.
-    
-    Logic:
-    - Finds the latest bank settlement date. The forecast starts the day after this date.
-    - Historical calculations:
-      - Active period in df_rp to get average daily collections, payouts, and refunds.
-      - Default rates: 2% fee + 18% GST for payments, Flat Rs. 5 fee + 18% GST for payouts.
-    - Future projection:
-      - Day 1 & Day 2 (Committed): Use actual expected settlement batches from df_rp (since payments settle T+2).
-      - Day 3 to Day 7 (Projected): Use historical averages for payments, refunds, and payouts.
-    - Returns a DataFrame with daily and cumulative forecasted amounts.
+    Generates a cash flow forecast using dynamic gateway fee and tax configuration.
     """
     # 1. Preprocess dates
     df_rp_clean = df_rp.copy()
@@ -29,24 +19,18 @@ def get_cash_forecast(df_rp, df_bank, days=7):
             edt = expected_dts.iloc[idx]
             if pd.isna(edt):
                 timestamps.append(datetime.now())
-            elif row['type'] == 'PAYMENT':
-                timestamps.append(edt - timedelta(days=2))
             else:
-                timestamps.append(edt)
+                timestamps.append(edt - timedelta(days=2))
         df_rp_clean['timestamp_dt'] = timestamps
-    
-    # Calculate expected settlement date for each gateway transaction
+
     settlement_dates = []
     for idx, row in df_rp_clean.iterrows():
         dt = row['timestamp_dt']
         if pd.isna(dt):
             settlement_dates.append(None)
-            continue
-        if row['type'] == 'PAYMENT':
-            # Payments settle T+2
+        elif row['type'] == 'PAYMENT':
             settlement_dates.append(dt + timedelta(days=2))
         else:
-            # Payouts and Refunds settle T+0 (same day)
             settlement_dates.append(dt)
             
     df_rp_clean['expected_settlement_dt'] = settlement_dates
@@ -144,8 +128,10 @@ def get_cash_forecast(df_rp, df_bank, days=7):
             payments = avg_payment
             refunds = avg_refund
             payouts = avg_payout
-            # Estimate fees: Payments 2% + 18% GST (total 2.36%), Payouts Rs. 5 + 18% GST (total Rs. 5.90)
-            fees_gst = (payments * 0.02 * 1.18) + (payouts > 0) * 5.90 + (refunds * 0.02 * 1.18)
+            # Estimate fees using dynamic configured rates
+            eff_fee_rate = float(gateway_fee_rate) * (1.0 + float(gst_rate))
+            eff_payout_fee = float(payout_fee) * (1.0 + float(gst_rate))
+            fees_gst = (payments * eff_fee_rate) + ((payouts > 0) * eff_payout_fee) + (refunds * eff_fee_rate)
             status_label = "PROJECTED (Daily Average)"
             
         net_inflow = payments - refunds - payouts - fees_gst

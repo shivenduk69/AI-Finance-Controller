@@ -280,6 +280,24 @@ def init_db():
     )
     """)
     
+    # 15. Exception Resolutions & Audit Archive Table
+    cursor.execute(f"""
+    CREATE TABLE IF NOT EXISTS exception_resolutions (
+        resolution_id {pk_auto},
+        transaction_id VARCHAR(100),
+        order_id VARCHAR(100),
+        merchant_id VARCHAR(100),
+        store_id VARCHAR(100),
+        amount_inr {dec_type},
+        issue_description {long_text},
+        resolution_note {long_text},
+        resolved_by_role VARCHAR(50),
+        resolved_by_user VARCHAR(100),
+        status VARCHAR(50) DEFAULT 'RESOLVED',
+        created_at {ts_default}
+    )
+    """)
+    
     conn.commit()
     
     # --- SEEDING PREDEFINED DATA ---
@@ -1015,19 +1033,24 @@ def get_notifications(user_id=None, merchant_id=None, store_id=None, role=None):
     placeholder = "%s" if (is_pg or is_my) else "?"
     
     try:
-        query = "SELECT notification_id, title, message, is_read, created_at FROM notifications WHERE is_read = 0"
+        query = "SELECT notification_id, title, message, is_read, created_at, merchant_id, store_id, role FROM notifications WHERE is_read = 0"
         params = []
         
         if merchant_id and store_id:
-            query += f" AND ((merchant_id = {placeholder} AND store_id = {placeholder}) OR role = 'ALL' OR (user_id = {placeholder}))"
+            query += f" AND (((merchant_id = {placeholder} OR merchant_id IS NULL) AND (store_id = {placeholder} OR store_id IS NULL OR store_id = '')) OR role = 'ALL' OR (user_id = {placeholder}))"
             params = [merchant_id, store_id, user_id]
+        elif merchant_id:
+            query += f" AND (merchant_id = {placeholder} OR role = 'ALL' OR role = 'MERCHANT')"
+            params = [merchant_id]
         elif role == 'ADMIN':
             query += f" AND (role = 'ADMIN' OR role = 'ALL')"
+        elif role == 'MERCHANT':
+            query += f" AND (role = 'MERCHANT' OR role = 'ALL')"
         elif user_id:
             query += f" AND (user_id = {placeholder} OR role = 'ALL')"
             params = [user_id]
             
-        query += " ORDER BY created_at DESC"
+        query += " ORDER BY created_at DESC, notification_id DESC"
         
         if params:
             cursor.execute(query, tuple(params))
@@ -1041,7 +1064,10 @@ def get_notifications(user_id=None, merchant_id=None, store_id=None, role=None):
                 'title': r[1],
                 'message': r[2],
                 'is_read': r[3],
-                'created_at': r[4]
+                'created_at': r[4],
+                'merchant_id': r[5],
+                'store_id': r[6],
+                'role': r[7]
             })
         return notifs
     except Exception as e:
@@ -1061,21 +1087,182 @@ def mark_notification_as_read(notif_id):
     conn.commit()
     conn.close()
 
-def resolve_transaction_exception(transaction_id, note):
-    """Applies a manual correction to a transaction exception and logs it."""
-    import streamlit as st
-    if "resolved_exceptions" not in st.session_state:
-        st.session_state.resolved_exceptions = []
-    if transaction_id not in st.session_state.resolved_exceptions:
-        st.session_state.resolved_exceptions.append(transaction_id)
-        
-    if "resolution_notes" not in st.session_state:
-        st.session_state.resolution_notes = {}
-    st.session_state.resolution_notes[transaction_id] = note
+def record_exception_resolution(transaction_id, order_id="", merchant_id="", store_id="", amount_inr=0.0, issue_description="", resolution_note="", resolved_by_role="ADMIN", resolved_by_user="admin", status="RESOLVED"):
+    """Records an exception resolution in the persistent database, notifies the relevant parties, and logs an audit trail."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    is_pg = is_postgres_configured()
+    is_my = is_mysql_configured()
+    placeholders = "%s, %s, %s, %s, %s, %s, %s, %s, %s, %s" if (is_pg or is_my) else "?, ?, ?, ?, ?, ?, ?, ?, ?, ?"
     
-    # Log to audit trail in database
-    user_id = st.session_state.user.get('user_id', 'admin') if st.session_state.get('user') else 'admin'
-    log_action(user_id, "Resolve Exception", f"Resolved transaction {transaction_id} manually. Note: {note}")
+    try:
+        cursor.execute(f"""
+            INSERT INTO exception_resolutions 
+            (transaction_id, order_id, merchant_id, store_id, amount_inr, issue_description, resolution_note, resolved_by_role, resolved_by_user, status)
+            VALUES ({placeholders})
+        """, (transaction_id, order_id, merchant_id, store_id, float(amount_inr or 0.0), str(issue_description), str(resolution_note), resolved_by_role, resolved_by_user, status))
+        conn.commit()
+    except Exception as e:
+        print(f"Error inserting exception resolution: {e}")
+    finally:
+        conn.close()
+
+    # Automatic cross-role synchronized notifications
+    if resolved_by_role == 'ADMIN' and status == 'RESOLVED':
+        # Admin resolved -> Notify the corresponding store
+        create_notification(
+            user_id=None,
+            merchant_id=merchant_id if merchant_id else None,
+            store_id=store_id if store_id else None,
+            role='MERCHANT',
+            title=f"Exception Resolved for {transaction_id}",
+            message=f"Admin has resolved discrepancy on Transaction {transaction_id} (Order: {order_id}). Resolution Note: '{resolution_note}'."
+        )
+        log_action(resolved_by_user, "Admin Exception Resolution", f"Admin resolved {transaction_id} (Store: {store_id or 'Global'}). Note: {resolution_note}")
+    elif resolved_by_role == 'MERCHANT':
+        # Merchant resolved on store side -> Notify Admin to review and verify manually
+        create_notification(
+            user_id=None,
+            merchant_id=merchant_id,
+            store_id=store_id,
+            role='ADMIN',
+            title=f"Merchant Resolution Submitted: {transaction_id}",
+            message=f"Store {(store_id or '').upper()} ({(merchant_id or '').upper()}) submitted resolution for Transaction {transaction_id} (Order: {order_id}). Store Note: '{resolution_note}'. Please review and verify in Exception Command Center."
+        )
+        log_action(resolved_by_user, "Merchant Resolution Submitted", f"Store {store_id} submitted resolution for {transaction_id}. Note: {resolution_note}")
+
+    # Synchronize with Streamlit session state if available
+    try:
+        import streamlit as st
+        if status == 'RESOLVED':
+            if "resolved_exceptions" not in st.session_state:
+                st.session_state.resolved_exceptions = []
+            if transaction_id not in st.session_state.resolved_exceptions:
+                st.session_state.resolved_exceptions.append(transaction_id)
+            if "resolution_notes" not in st.session_state:
+                st.session_state.resolution_notes = {}
+            st.session_state.resolution_notes[transaction_id] = resolution_note
+    except Exception:
+        pass
+
+def approve_merchant_resolution(resolution_id, transaction_id, admin_note="Approved by Razorpay Admin.", admin_user="admin"):
+    """Approves a merchant-submitted resolution request from the Admin side and notifies the merchant store."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    is_pg = is_postgres_configured()
+    is_my = is_mysql_configured()
+    placeholder = "%s" if (is_pg or is_my) else "?"
+    
+    merchant_id = None
+    store_id = None
+    order_id = ""
+    original_note = ""
+    
+    try:
+        cursor.execute(f"SELECT merchant_id, store_id, order_id, resolution_note FROM exception_resolutions WHERE resolution_id = {placeholder}", (resolution_id,))
+        row = cursor.fetchone()
+        if row:
+            merchant_id, store_id, order_id, original_note = row[0], row[1], row[2], row[3]
+            
+        combined_note = f"{original_note} | Verified & Approved by Admin: {admin_note}" if admin_note else original_note
+        
+        cursor.execute(f"UPDATE exception_resolutions SET status = 'RESOLVED', resolution_note = {placeholder}, resolved_by_role = 'ADMIN', resolved_by_user = {placeholder} WHERE resolution_id = {placeholder}", (combined_note, admin_user, resolution_id))
+        conn.commit()
+    except Exception as e:
+        print(f"Error approving merchant resolution: {e}")
+        combined_note = admin_note
+    finally:
+        conn.close()
+        
+    # Notify merchant store of final admin confirmation
+    create_notification(
+        user_id=None,
+        merchant_id=merchant_id,
+        store_id=store_id,
+        role='MERCHANT',
+        title=f"Resolution Verified & Approved: {transaction_id}",
+        message=f"Razorpay Admin verified and approved the resolution for Transaction {transaction_id} (Order: {order_id}). Audit Note: '{admin_note}'."
+    )
+    log_action(admin_user, "Admin Approved Resolution", f"Approved merchant resolution for {transaction_id} (Store: {store_id}). Note: {admin_note}")
+
+    try:
+        import streamlit as st
+        if "resolved_exceptions" not in st.session_state:
+            st.session_state.resolved_exceptions = []
+        if transaction_id not in st.session_state.resolved_exceptions:
+            st.session_state.resolved_exceptions.append(transaction_id)
+        if "resolution_notes" not in st.session_state:
+            st.session_state.resolution_notes = {}
+        st.session_state.resolution_notes[transaction_id] = combined_note
+    except Exception:
+        pass
+
+def get_exception_resolutions(merchant_id=None, store_id=None, status=None):
+    """Retrieves resolution history and pending requests from the persistent database."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    is_pg = is_postgres_configured()
+    is_my = is_mysql_configured()
+    placeholder = "%s" if (is_pg or is_my) else "?"
+    
+    query = "SELECT resolution_id, transaction_id, order_id, merchant_id, store_id, amount_inr, issue_description, resolution_note, resolved_by_role, resolved_by_user, status, created_at FROM exception_resolutions WHERE 1=1"
+    params = []
+    
+    if merchant_id and str(merchant_id).lower() != "all":
+        query += f" AND merchant_id = {placeholder}"
+        params.append(merchant_id)
+    if store_id and str(store_id).lower() != "all":
+        query += f" AND store_id = {placeholder}"
+        params.append(store_id)
+    if status and str(status).lower() != "all":
+        query += f" AND status = {placeholder}"
+        params.append(status)
+        
+    query += " ORDER BY created_at DESC, resolution_id DESC"
+    
+    try:
+        if params:
+            cursor.execute(query, tuple(params))
+        else:
+            cursor.execute(query)
+            
+        rows = []
+        for r in cursor.fetchall():
+            rows.append({
+                'resolution_id': r[0],
+                'transaction_id': r[1],
+                'order_id': r[2],
+                'merchant_id': r[3],
+                'store_id': r[4],
+                'amount_inr': float(r[5] or 0.0),
+                'issue_description': r[6],
+                'resolution_note': r[7],
+                'resolved_by_role': r[8],
+                'resolved_by_user': r[9],
+                'status': r[10],
+                'created_at': r[11]
+            })
+        return rows
+    except Exception as e:
+        print(f"Error fetching exception resolutions: {e}")
+        return []
+    finally:
+        conn.close()
+
+def resolve_transaction_exception(transaction_id, note, order_id="", merchant_id="", store_id="", amount_inr=0.0, issue_description="", resolved_by_role="ADMIN", resolved_by_user="admin"):
+    """Applies a manual correction to a transaction exception and persists it."""
+    record_exception_resolution(
+        transaction_id=transaction_id,
+        order_id=order_id,
+        merchant_id=merchant_id,
+        store_id=store_id,
+        amount_inr=amount_inr,
+        issue_description=issue_description,
+        resolution_note=note,
+        resolved_by_role=resolved_by_role,
+        resolved_by_user=resolved_by_user,
+        status="RESOLVED"
+    )
 
 # --- Persistent Audit Log Functions ---
 
