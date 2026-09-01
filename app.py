@@ -256,22 +256,57 @@ if "prompt_default" not in st.session_state:
 if "current_indexed_batch" not in st.session_state:
     st.session_state.current_indexed_batch = ""
 
-# Admin panel system rules config state
+# Admin panel system rules config state (persisted in database)
+from src.database import get_config
 if "sys_gateway_fee" not in st.session_state:
-    st.session_state.sys_gateway_fee = 2.0
+    try:
+        st.session_state.sys_gateway_fee = float(get_config("sys_gateway_fee", 2.0))
+    except Exception:
+        st.session_state.sys_gateway_fee = 2.0
 if "sys_gst_rate" not in st.session_state:
-    st.session_state.sys_gst_rate = 18.0
+    try:
+        st.session_state.sys_gst_rate = float(get_config("sys_gst_rate", 18.0))
+    except Exception:
+        st.session_state.sys_gst_rate = 18.0
 if "sys_payout_fee" not in st.session_state:
-    st.session_state.sys_payout_fee = 5.0
+    try:
+        st.session_state.sys_payout_fee = float(get_config("sys_payout_fee", 5.0))
+    except Exception:
+        st.session_state.sys_payout_fee = 5.0
 if "sys_settlement_delay" not in st.session_state:
-    st.session_state.sys_settlement_delay = "T+2 Days"
+    st.session_state.sys_settlement_delay = get_config("sys_settlement_delay", "T+2 Days")
 if "sys_gemini_model" not in st.session_state:
     st.session_state.sys_gemini_model = "gemini-3.6-flash"
 if "sys_confidence_threshold" not in st.session_state:
     st.session_state.sys_confidence_threshold = 80
 if "sys_gemini_api_key" not in st.session_state:
-    from src.database import get_config
     st.session_state.sys_gemini_api_key = get_config("sys_gemini_api_key", os.environ.get("GEMINI_API_KEY", ""))
+if "sys_tds_config" not in st.session_state:
+    import json
+    saved_tds = get_config("sys_tds_config", "")
+    if saved_tds:
+        try:
+            st.session_state.sys_tds_config = json.loads(saved_tds)
+        except Exception:
+            saved_tds = ""
+    if not saved_tds:
+        st.session_state.sys_tds_config = {
+            'PAYMENT': {
+                'Individual': {'applicable': True, 'rate': 0.01},
+                'Company': {'applicable': True, 'rate': 0.02},
+                'Non-Resident': {'applicable': False, 'rate': 0.00}
+            },
+            'PAYOUT': {
+                'Individual': {'applicable': False, 'rate': 0.00},
+                'Company': {'applicable': False, 'rate': 0.00},
+                'Non-Resident': {'applicable': False, 'rate': 0.00}
+            },
+            'REFUND': {
+                'Individual': {'applicable': False, 'rate': 0.00},
+                'Company': {'applicable': False, 'rate': 0.00},
+                'Non-Resident': {'applicable': False, 'rate': 0.00}
+            }
+        }
 # Force override or initialize sys_system_prompt_template to ensure no sources are displayed in responses
 st.session_state.sys_system_prompt_template = """You are the AI Finance Controller assistant.
 Your goal is to answer the user's question using both transaction evidence and the provided financial documents/context.
@@ -2090,7 +2125,7 @@ else:
     render_sidebar_item("Raise Ticket", "tickets", "\U0001F39F")
     
     st.sidebar.markdown('<div class="sidebar-section-header">INSIGHTS</div>', unsafe_allow_html=True)
-    render_sidebar_item("AI Insights", "insights", "\u2726")
+    render_sidebar_item("AI Assistant", "insights", "\u2726")
     render_sidebar_item("Cash Forecast", "forecast", "\u2197")
     
     st.sidebar.markdown('<div style="border-bottom: 1px solid rgba(255, 255, 255, 0.05); width: 84%; margin: 12px auto 14px auto;"></div>', unsafe_allow_html=True)
@@ -2151,9 +2186,21 @@ else:
     current_merchant_id = st.session_state.admin_filter_merchant
     current_store_id = st.session_state.admin_filter_store
 
-# Execute the relevant batch retrieval
+# Execute the relevant batch retrieval using dynamic platform parameters
 if dataset_option == "Razorpay Synthetic Batch (60 records)":
-    metrics, df_tx, df_unmatched, df_bank, bank_excs = run_3way_reconciliation(current_merchant_id, current_store_id)
+    delay_str = st.session_state.get("sys_settlement_delay", "T+2 Days")
+    try:
+        delay_days = int(delay_str.split('+')[1].split(' ')[0])
+    except Exception:
+        delay_days = 2
+    metrics, df_tx, df_unmatched, df_bank, bank_excs = run_3way_reconciliation(
+        merchant_id=current_merchant_id, 
+        store_id=current_store_id,
+        gateway_fee_rate=float(st.session_state.get("sys_gateway_fee", 2.0)) / 100.0,
+        gst_rate=float(st.session_state.get("sys_gst_rate", 18.0)) / 100.0,
+        payout_fee=float(st.session_state.get("sys_payout_fee", 5.0)),
+        settlement_delay_days=delay_days
+    )
 else:
     # AUGUST 25 DATASET MOCK ENDPOINT (Adapt to current store)
     metrics, df_tx, df_unmatched, df_bank, bank_excs = get_august_25_example_data(current_merchant_id or "flipkart", current_store_id or "fk_delhi")
@@ -2246,7 +2293,12 @@ if len(st.session_state.resolved_exceptions) > 0:
     metrics['auto_match_accuracy_pct'] = round((metrics['auto_resolved_count'] / total_elements) * 100, 1)
 
 # Run forecasting and tax compliance checkers
-forecast_df = get_cash_forecast(df_tx, df_bank, days=7)
+forecast_df = get_cash_forecast(
+    df_tx, df_bank, days=7,
+    gateway_fee_rate=float(st.session_state.get("sys_gateway_fee", 2.0)) / 100.0,
+    gst_rate=float(st.session_state.get("sys_gst_rate", 18.0)) / 100.0,
+    payout_fee=float(st.session_state.get("sys_payout_fee", 5.0))
+)
 tax_summary, tax_df = run_tax_audit(df_tx, tds_config=st.session_state.sys_tds_config)
 
 # ----------------------------------------------------
@@ -2725,18 +2777,12 @@ if st.session_state.page == "dashboard":
     # Bottom Left: AI Finance Insights
     with col_b1:
         with st.container(border=True):
-            b_head_l, b_head_r = st.columns([2.2, 1.3])
-            with b_head_l:
-                st.markdown("""
-                <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px;">
-                    <span style="color: #3B82F6; font-size: 13px;">✦</span>
-                    <h3 style="font-size: 12px; font-weight: 800; color: #172B4D; text-transform: uppercase; letter-spacing: 0.5px; margin: 0;">AI FINANCE INSIGHTS</h3>
-                </div>
-                """, unsafe_allow_html=True)
-            with b_head_r:
-                if st.button("Review Exceptions Queue", key="btn_ai_insights_queue", use_container_width=True):
-                    st.session_state.page = "exceptions"
-                    st.rerun()
+            st.markdown("""
+            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 10px;">
+                <span style="color: #3B82F6; font-size: 13px;">✦</span>
+                <h3 style="font-size: 12px; font-weight: 800; color: #172B4D; text-transform: uppercase; letter-spacing: 0.5px; margin: 0;">AI FINANCE INSIGHTS</h3>
+            </div>
+            """, unsafe_allow_html=True)
                     
             st.markdown(f"""
             <p style="font-size: 12.5px; color: #172B4D; margin: 0 0 10px 0; line-height: 1.4;">
@@ -2752,18 +2798,12 @@ if st.session_state.page == "dashboard":
     # Bottom Right: Daily Close Workflow
     with col_b2:
         with st.container(border=True):
-            dc_head_l, dc_head_r = st.columns([2.2, 1.3])
-            with dc_head_l:
-                st.markdown("""
-                <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px;">
-                    <span style="font-size: 13px;">📋</span>
-                    <h3 style="font-size: 12px; font-weight: 800; color: #172B4D; text-transform: uppercase; letter-spacing: 0.5px; margin: 0;">DAILY CLOSE WORKFLOW</h3>
-                </div>
-                """, unsafe_allow_html=True)
-            with dc_head_r:
-                if st.button("Review Exceptions Queue", key="btn_dc_insights_queue", use_container_width=True):
-                    st.session_state.page = "exceptions"
-                    st.rerun()
+            st.markdown("""
+            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 10px;">
+                <span style="font-size: 13px;">📋</span>
+                <h3 style="font-size: 12px; font-weight: 800; color: #172B4D; text-transform: uppercase; letter-spacing: 0.5px; margin: 0;">DAILY CLOSE WORKFLOW</h3>
+            </div>
+            """, unsafe_allow_html=True)
                     
             status_tag = "PENDING ACTIONS" if exc_count > 0 else "✓ READY TO CLOSE"
             status_color = "#D97706" if exc_count > 0 else "#10B981"
@@ -3030,7 +3070,7 @@ elif st.session_state.page == "transactions":
             # Mock Export Button with dynamic download link
             csv_data = display_df.to_csv(index=False)
             st.download_button(
-                label="📥 Export Ledger to CSV",
+                label="⤓ Export Ledger to CSV",
                 data=csv_data,
                 file_name="reconciliation_gateway_ledger.csv",
                 mime="text/csv",
@@ -3317,7 +3357,7 @@ elif st.session_state.page == "exceptions":
             with col_hx2:
                 df_store_res = pd.DataFrame(store_resolved)
                 st.download_button(
-                    "📥 Export Resolution Backup (CSV)",
+                    "⤓ Export Resolution Backup (CSV)",
                     data=df_store_res.to_csv(index=False),
                     file_name=f"store_resolution_history_{cur_m_id}_{cur_s_id}_{datetime.now().strftime('%Y%m%d')}.csv",
                     mime="text/csv",
@@ -3831,7 +3871,7 @@ elif st.session_state.page == "insights":
                     txt_output += f"{msg['role'].upper()}:\n{msg['content']}\n\n"
                     
                 st.download_button(
-                    label="📥 Export Chat Log",
+                    label="⤓ Export Chat Log",
                     data=txt_output,
                     file_name=f"chat_history_{selected_s_id}.txt",
                     mime="text/plain",
@@ -3878,8 +3918,13 @@ elif st.session_state.page == "forecast":
         
     # Calculate days needed and run dynamic forecast
     days_needed = (end_date_val - forecast_start_date.date()).days + 1
-    # Generate forecast up to at least the days requested
-    dynamic_forecast_df = get_cash_forecast(df_tx, df_bank, days=max(7, days_needed))
+    # Generate forecast up to at least the days requested with dynamic parameters
+    dynamic_forecast_df = get_cash_forecast(
+        df_tx, df_bank, days=max(7, days_needed),
+        gateway_fee_rate=float(st.session_state.get("sys_gateway_fee", 2.0)) / 100.0,
+        gst_rate=float(st.session_state.get("sys_gst_rate", 18.0)) / 100.0,
+        payout_fee=float(st.session_state.get("sys_payout_fee", 5.0))
+    )
     dynamic_forecast_df['date_dt'] = pd.to_datetime(dynamic_forecast_df['date'], format="%d-%m-%Y")
     
     # Filter to chosen date range
@@ -4132,7 +4177,7 @@ elif st.session_state.page == "admin":
         st.markdown("""
         <div style="margin-bottom: 18px;">
             <h1 style="margin: 0; font-size: 24px; font-weight: 700; color: #172B4D; font-family: 'Outfit', sans-serif; letter-spacing: -0.3px;">
-                Welcome back, Razorpay Admin 👋
+                Welcome back, Razorpay Admin
             </h1>
             <p style="margin: 3px 0 0 0; font-size: 13.5px; color: #6B7C93; font-family: 'Inter', sans-serif;">
                 Here's what's happening across your platform today.
@@ -4151,7 +4196,7 @@ elif st.session_state.page == "admin":
             # Export report button - triggers CSV download of platform transactions
             report_csv = df_tx.to_csv(index=False).encode('utf-8')
             st.download_button(
-                label="📥 Export Report",
+                label="⤓ Export Report",
                 data=report_csv,
                 file_name=f"razorpay_admin_platform_report_{datetime.now().strftime('%Y%m%d')}.csv",
                 mime="text/csv",
@@ -4931,7 +4976,7 @@ elif st.session_state.page == "admin_exceptions":
             with col_gx2:
                 df_global_res = pd.DataFrame(resolved_history)
                 st.download_button(
-                    "📥 Export Global Backup (CSV)",
+                    "⤓ Export Global Backup (CSV)",
                     data=df_global_res.to_csv(index=False),
                     file_name=f"global_resolution_backup_{datetime.now().strftime('%Y%m%d')}.csv",
                     mime="text/csv",
@@ -5337,11 +5382,14 @@ elif st.session_state.page == "admin_settings":
     st.markdown("<h2>⚙ platform settings & compliance parameters</h2>", unsafe_allow_html=True)
     st.markdown("<p style='color: var(--text-sec); font-size: 14px;'>Adjust matching parameters, fee structures, and Section 194-O TDS compliance configurations.</p>", unsafe_allow_html=True)
     
-    st.markdown("### Standard Reconciliation Parameters")
-    st.session_state.sys_gateway_fee = st.number_input("Standard Gateway fee rate (%)", min_value=0.0, max_value=10.0, value=st.session_state.sys_gateway_fee, step=0.1)
-    st.session_state.sys_gst_rate = st.number_input("GST rate on gateway charges (%)", min_value=0.0, max_value=30.0, value=st.session_state.sys_gst_rate, step=1.0)
-    st.session_state.sys_payout_fee = st.number_input("Standard payout Flat rate (INR)", min_value=0.0, max_value=100.0, value=st.session_state.sys_payout_fee, step=1.0)
-    st.session_state.sys_settlement_delay = st.selectbox("Expected settlement Delay", ["T+2 Days", "T+1 Day", "T+0 Days"], index=0)
+    delay_opts = ["T+2 Days", "T+1 Day", "T+0 Days"]
+    curr_delay = st.session_state.get("sys_settlement_delay", "T+2 Days")
+    curr_idx = delay_opts.index(curr_delay) if curr_delay in delay_opts else 0
+    
+    st.session_state.sys_gateway_fee = st.number_input("Standard Gateway fee rate (%)", min_value=0.0, max_value=10.0, value=float(st.session_state.sys_gateway_fee), step=0.1)
+    st.session_state.sys_gst_rate = st.number_input("GST rate on gateway charges (%)", min_value=0.0, max_value=30.0, value=float(st.session_state.sys_gst_rate), step=1.0)
+    st.session_state.sys_payout_fee = st.number_input("Standard payout Flat rate (INR)", min_value=0.0, max_value=100.0, value=float(st.session_state.sys_payout_fee), step=1.0)
+    st.session_state.sys_settlement_delay = st.selectbox("Expected settlement Delay", delay_opts, index=curr_idx)
     
     st.markdown("### Section 194-O TDS Policy Adjustments")
     with st.expander("Update Withholding Settings"):
@@ -5358,9 +5406,19 @@ elif st.session_state.page == "admin_settings":
         st.session_state.sys_tds_config['PAYMENT']['Company']['applicable'] = app_corp
         st.session_state.sys_tds_config['PAYMENT']['Company']['rate'] = rate_corp
         
-    if st.button("Save Settings", key="btn_save_admin_settings"):
-        st.success("[OK] Platform settings and Section 194-O rules updated successfully.")
-        st.toast("Settings saved!", icon="✅")
+    if st.button("Save Settings", key="btn_save_admin_settings", type="primary"):
+        from src.database import save_config, log_action
+        import json
+        save_config("sys_gateway_fee", str(st.session_state.sys_gateway_fee))
+        save_config("sys_gst_rate", str(st.session_state.sys_gst_rate))
+        save_config("sys_payout_fee", str(st.session_state.sys_payout_fee))
+        save_config("sys_settlement_delay", str(st.session_state.sys_settlement_delay))
+        save_config("sys_tds_config", json.dumps(st.session_state.sys_tds_config))
+        
+        user_id = st.session_state.user.get('user_id', 'admin') if st.session_state.user else 'admin'
+        log_action(user_id, "Update Platform Settings", f"Configured Standard Gateway Fee: {st.session_state.sys_gateway_fee}%, GST: {st.session_state.sys_gst_rate}%, Payout Fee: INR {st.session_state.sys_payout_fee}, Settlement Delay: {st.session_state.sys_settlement_delay}")
+        st.success(f"[OK] Platform rules updated & applied! Gateway Fee set to {st.session_state.sys_gateway_fee}%, GST to {st.session_state.sys_gst_rate}%. All panels recalculated.")
+        st.toast("Settings saved & applied globally!", icon="✅")
         st.rerun()
 
 # ----------------------------------------------------
@@ -5621,7 +5679,7 @@ elif st.session_state.page == "admin_transactions":
     
     st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
     st.download_button(
-        "📥 Export Filtered Ledger (CSV)",
+        "⤓ Export Filtered Ledger (CSV)",
         data=display_df.to_csv(index=False),
         file_name="global_transactions_ledger.csv",
         mime="text/csv"
@@ -5910,7 +5968,7 @@ elif st.session_state.page == "admin_settlements":
     
     st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
     st.download_button(
-        "📥 Export Settlements Ledger (CSV)",
+        "⤓ Export Settlements Ledger (CSV)",
         data=display_bank.to_csv(index=False),
         file_name="platform_settlements_ledger.csv",
         mime="text/csv"
