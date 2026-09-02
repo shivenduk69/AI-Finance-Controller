@@ -1014,6 +1014,25 @@ def resolve_support_ticket(ticket_id, resolution_comments):
     conn.commit()
     conn.close()
 
+def delete_support_ticket(ticket_id):
+    """Permanently deletes a specific support ticket by its ID."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    is_pg = is_postgres_configured()
+    is_my = is_mysql_configured()
+    placeholder = "%s" if (is_pg or is_my) else "?"
+    cursor.execute(f"DELETE FROM support_tickets WHERE ticket_id = {placeholder}", (ticket_id,))
+    conn.commit()
+    conn.close()
+
+def clear_resolved_support_tickets():
+    """Permanently deletes all resolved support tickets."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM support_tickets WHERE status = 'RESOLVED'")
+    conn.commit()
+    conn.close()
+
 def get_global_metrics():
     """Calculates global platform metrics across all merchants and stores."""
     from src.reconciliation import run_3way_reconciliation

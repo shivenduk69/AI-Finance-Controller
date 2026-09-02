@@ -2410,18 +2410,23 @@ def filter_datasets_by_date(df_tx_in, df_bank_in, start_dt, end_dt):
 
 def render_dashboard_date_filter(key_prefix="merchant"):
     preset_options = [
-        "🗓️ May 22 – May 28, 2025",
+        "🗓️ All Available Dates (Aug 02 – Aug 23)",
         "🗓️ Aug 16 – Aug 23, 2026 (Closing Batch)",
         "🗓️ Aug 09 – Aug 15, 2026 (Week 2 Batch)",
         "🗓️ Aug 02 – Aug 08, 2026 (Week 1 Batch)",
-        "🗓️ All Available Dates (Aug 02 – Aug 23)",
         "🗓️ Custom Date Range..."
     ]
     
-    if f"{key_prefix}_date_preset" not in st.session_state:
+    if (
+        f"{key_prefix}_date_preset" not in st.session_state
+        or st.session_state[f"{key_prefix}_date_preset"] not in preset_options
+    ):
         st.session_state[f"{key_prefix}_date_preset"] = preset_options[0]
+        st.session_state[f"{key_prefix}_start_date"] = date(2026, 8, 1)
+        st.session_state[f"{key_prefix}_end_date"] = date(2026, 8, 23)
+        
     if f"{key_prefix}_start_date" not in st.session_state:
-        st.session_state[f"{key_prefix}_start_date"] = date(2026, 8, 16)
+        st.session_state[f"{key_prefix}_start_date"] = date(2026, 8, 1)
     if f"{key_prefix}_end_date" not in st.session_state:
         st.session_state[f"{key_prefix}_end_date"] = date(2026, 8, 23)
         
@@ -2437,8 +2442,8 @@ def render_dashboard_date_filter(key_prefix="merchant"):
     
     if selected_preset != current_preset:
         st.session_state[f"{key_prefix}_date_preset"] = selected_preset
-        if "May 22 – May 28, 2025" in selected_preset:
-            st.session_state[f"{key_prefix}_start_date"] = date(2026, 8, 16)
+        if "All Available Dates" in selected_preset:
+            st.session_state[f"{key_prefix}_start_date"] = date(2026, 8, 1)
             st.session_state[f"{key_prefix}_end_date"] = date(2026, 8, 23)
         elif "Aug 16 – Aug 23" in selected_preset:
             st.session_state[f"{key_prefix}_start_date"] = date(2026, 8, 16)
@@ -2449,9 +2454,6 @@ def render_dashboard_date_filter(key_prefix="merchant"):
         elif "Aug 02 – Aug 08" in selected_preset:
             st.session_state[f"{key_prefix}_start_date"] = date(2026, 8, 2)
             st.session_state[f"{key_prefix}_end_date"] = date(2026, 8, 8)
-        elif "All Available Dates" in selected_preset:
-            st.session_state[f"{key_prefix}_start_date"] = date(2026, 8, 2)
-            st.session_state[f"{key_prefix}_end_date"] = date(2026, 8, 23)
         st.rerun()
         
     if "Custom Date Range" in selected_preset:
@@ -5076,48 +5078,94 @@ elif st.session_state.page == "admin_tickets":
     st.markdown("<h2>🎟 Support Tickets Resolution Center</h2>", unsafe_allow_html=True)
     st.markdown("<p style='color: var(--text-sec); font-size: 14px;'>Review and reply to helpdesk queries submitted by merchant users.</p>", unsafe_allow_html=True)
     
-    from src.database import get_support_tickets, resolve_support_ticket
+    from src.database import get_support_tickets, resolve_support_ticket, delete_support_ticket, clear_resolved_support_tickets
     tickets = get_support_tickets()
     
-    if not tickets:
-        st.info("No helpdesk queries raised on the platform.")
-    else:
-        for tk in tickets:
-            color_tk = "var(--success)" if tk['status'] == 'RESOLVED' else "var(--warning)"
-            t_merchant = (tk['merchant_id'] or "general").upper()
-            t_store = tk['store_id'].split('_')[-1].upper()
-            t_tx = tk['transaction_id'] if tk['transaction_id'] else 'None'
-            ticket_info_html = (
-                f'<div style="background-color: #FFFFFF; border: 1px solid var(--border); border-left: 4px solid {color_tk}; padding: 16px; border-radius: 6px; margin-bottom: 12px; font-family: \'Inter\', sans-serif;">\n'
-                '    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">\n'
-                f'        <strong style="color: var(--navy); font-size: 14.5px;">Ticket #{tk["ticket_id"]}: {tk["subject"]}</strong>\n'
-                f'        <span style="color: {color_tk}; font-weight: 700; font-size: 11px; padding: 2px 8px; border-radius: 20px; background-color:#F1F5F9;">{tk["status"]}</span>\n'
-                '    </div>\n'
-                '    <span style="font-size: 11.5px; color: var(--text-sec);">\n'
-                f'        Merchant: {t_merchant} | Store: {t_store} | Related Tx: {t_tx} | Created: {tk["timestamp"]}\n'
-                '    </span>\n'
-                f'    <p style="margin: 8px 0; font-size: 13px; background: #F8FAFC; padding: 10px; border-radius: 4px; border: 1px solid var(--border);">{tk["message"]}</p>'
-            )
-            st.markdown(ticket_info_html, unsafe_allow_html=True)
-            
-            if tk['status'] in ['OPEN', 'PENDING']:
-                with st.expander("Reply and Resolve Ticket"):
-                    reply_text = st.text_area("Operations Response Msg", key=f"reply_{tk['ticket_id']}")
-                    if st.button("Submit Response & Mark Resolved", key=f"btn_reply_{tk['ticket_id']}"):
-                        if reply_text.strip():
-                            resolve_support_ticket(tk['ticket_id'], reply_text.strip())
-                            st.toast(f"Ticket #{tk['ticket_id']} resolved!", icon="\u2705")
-                            st.rerun()
-                        else:
-                            st.error("Please enter a response body.")
-            else:
-                st.markdown(
-                    '<div style="margin-top: 8px; padding: 10px 14px; background-color: #F0FDF4; border-left: 3px solid #10B981; border-radius: 4px; font-size: 12.5px; color:#1E3A1E;">\n'
-                    f'    <strong>Resolved Response:</strong> {tk["reply"]}\n'
-                    '</div>',
-                    unsafe_allow_html=True
+    open_tks = [t for t in tickets if t.get('status') in ['OPEN', 'PENDING']]
+    resolved_tks = [t for t in tickets if t.get('status') == 'RESOLVED']
+    
+    tab_active, tab_history = st.tabs([f"Pending Queries ({len(open_tks)})", f"Resolved History ({len(resolved_tks)})"])
+    
+    with tab_active:
+        if not open_tks:
+            st.info("No active open queries pending review.")
+        else:
+            for tk in open_tks:
+                color_tk = "var(--warning)"
+                t_merchant = (tk.get('merchant_id') or "general").upper()
+                t_store = tk.get('store_id', '').split('_')[-1].upper() if tk.get('store_id') else "ALL"
+                t_tx = tk.get('transaction_id') if tk.get('transaction_id') else 'None'
+                ticket_info_html = (
+                    f'<div style="background-color: #FFFFFF; border: 1px solid var(--border); border-left: 4px solid {color_tk}; padding: 16px; border-radius: 6px; margin-bottom: 8px; font-family: \'Inter\', sans-serif;">\n'
+                    '    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">\n'
+                    f'        <strong style="color: var(--navy); font-size: 14.5px;">Ticket #{tk["ticket_id"]}: {tk["subject"]}</strong>\n'
+                    f'        <span style="color: {color_tk}; font-weight: 700; font-size: 11px; padding: 2px 8px; border-radius: 20px; background-color:#F1F5F9;">{tk["status"]}</span>\n'
+                    '    </div>\n'
+                    '    <span style="font-size: 11.5px; color: var(--text-sec);">\n'
+                    f'        Merchant: {t_merchant} | Store: {t_store} | Related Tx: {t_tx} | Created: {tk["timestamp"]}\n'
+                    '    </span>\n'
+                    f'    <p style="margin: 8px 0; font-size: 13px; background: #F8FAFC; padding: 10px; border-radius: 4px; border: 1px solid var(--border);">{tk["message"]}</p>\n'
+                    '</div>'
                 )
-            st.markdown("</div>", unsafe_allow_html=True)
+                st.markdown(ticket_info_html, unsafe_allow_html=True)
+                
+                c_act1, c_act2 = st.columns([4.2, 0.8])
+                with c_act1:
+                    with st.expander(f"Reply and Resolve Ticket #{tk['ticket_id']}"):
+                        reply_text = st.text_area("Operations Response Msg", key=f"reply_{tk['ticket_id']}")
+                        if st.button("Submit Response & Mark Resolved", key=f"btn_reply_{tk['ticket_id']}"):
+                            if reply_text.strip():
+                                resolve_support_ticket(tk['ticket_id'], reply_text.strip())
+                                st.toast(f"Ticket #{tk['ticket_id']} resolved!", icon="✅")
+                                st.rerun()
+                            else:
+                                st.error("Please enter a response body.")
+                with c_act2:
+                    if st.button("🗑 Delete", key=f"del_open_{tk['ticket_id']}", help="Permanently delete this ticket", use_container_width=True):
+                        delete_support_ticket(tk['ticket_id'])
+                        st.toast(f"Ticket #{tk['ticket_id']} deleted.")
+                        st.rerun()
+                st.markdown("<div style='margin-bottom: 14px;'></div>", unsafe_allow_html=True)
+                
+    with tab_history:
+        if resolved_tks:
+            col_h_info, col_h_btn = st.columns([3.8, 1.2])
+            with col_h_info:
+                st.caption(f"{len(resolved_tks)} tickets in resolved history")
+            with col_h_btn:
+                if st.button("🗑 Clear All History", key="btn_clear_all_resolved", use_container_width=True):
+                    clear_resolved_support_tickets()
+                    st.toast("Resolved ticket history cleared.")
+                    st.rerun()
+            
+            for tk in resolved_tks:
+                color_tk = "var(--success)"
+                t_merchant = (tk.get('merchant_id') or "general").upper()
+                t_store = tk.get('store_id', '').split('_')[-1].upper() if tk.get('store_id') else "ALL"
+                t_tx = tk.get('transaction_id') if tk.get('transaction_id') else 'None'
+                ticket_info_html = (
+                    f'<div style="background-color: #FFFFFF; border: 1px solid var(--border); border-left: 4px solid {color_tk}; padding: 16px; border-radius: 6px; margin-bottom: 8px; font-family: \'Inter\', sans-serif;">\n'
+                    '    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">\n'
+                    f'        <strong style="color: var(--navy); font-size: 14.5px;">Ticket #{tk["ticket_id"]}: {tk["subject"]}</strong>\n'
+                    f'        <span style="color: {color_tk}; font-weight: 700; font-size: 11px; padding: 2px 8px; border-radius: 20px; background-color:#F1F5F9;">{tk["status"]}</span>\n'
+                    '    </div>\n'
+                    '    <span style="font-size: 11.5px; color: var(--text-sec);">\n'
+                    f'        Merchant: {t_merchant} | Store: {t_store} | Related Tx: {t_tx} | Created: {tk["timestamp"]}\n'
+                    '    </span>\n'
+                    f'    <p style="margin: 8px 0; font-size: 13px; background: #F8FAFC; padding: 10px; border-radius: 4px; border: 1px solid var(--border);">{tk["message"]}</p>\n'
+                    f'    <div style="margin-top: 8px; padding: 10px 14px; background-color: #F0FDF4; border-left: 3px solid #10B981; border-radius: 4px; font-size: 12.5px; color:#1E3A1E;">\n'
+                    f'        <strong>Resolved Response:</strong> {tk.get("reply", "Resolved")}\n'
+                    '    </div>\n'
+                    '</div>'
+                )
+                st.markdown(ticket_info_html, unsafe_allow_html=True)
+                if st.button("🗑 Delete Record", key=f"del_res_{tk['ticket_id']}", help="Delete this resolved ticket"):
+                    delete_support_ticket(tk['ticket_id'])
+                    st.toast(f"Ticket #{tk['ticket_id']} deleted.")
+                    st.rerun()
+                st.markdown("<div style='margin-bottom: 12px;'></div>", unsafe_allow_html=True)
+        else:
+            st.info("No resolved ticket history.")
 
 # ----------------------------------------------------
 # ADMIN PAGE 4: CENTRAL AI & RAG CONTROL CENTER
