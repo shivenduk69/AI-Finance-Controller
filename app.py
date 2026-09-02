@@ -2090,6 +2090,8 @@ st.sidebar.markdown(clean_html(f"""
 
 # Render Sidebar Menu groupings and items based on role
 user = st.session_state.user
+open_tickets_count = 0
+unread_notifs_count = 0
 if user and user.get('role') == 'ADMIN':
     st.sidebar.markdown('<div class="sidebar-section-header">ADMIN CONSOLE</div>', unsafe_allow_html=True)
     render_sidebar_item("Dashboard", "admin", "▣")
@@ -4268,8 +4270,17 @@ elif st.session_state.page == "admin":
     adm_exc_count = len(adm_exc_tx)
     adm_match_pct = round((adm_rec_count / adm_tx_count) * 100, 1) if adm_tx_count > 0 else 98.2
     
-    disp_tx_count = f"{adm_tx_count * 207:,}" if adm_tx_count < 200 else f"{adm_tx_count:,}"
+    disp_tx_count = f"{adm_tx_count:,}"
     disp_vol = f"₹{adm_volume:,.2f}"
+    
+    # Calculate dynamic open tickets count from database
+    open_tickets_count = 0
+    try:
+        from src.database import get_support_tickets
+        all_tks = get_support_tickets()
+        open_tickets_count = len([t for t in all_tks if t.get('status') in ['OPEN', 'PENDING']])
+    except Exception:
+        open_tickets_count = 0
             
     # 2. SIX KPI CARDS IN 1 ROW
     k1, k2, k3, k4, k5, k6 = st.columns(6)
