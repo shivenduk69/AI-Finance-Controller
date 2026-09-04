@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -253,10 +256,22 @@ def cached_3way_reconciliation(merchant_id, store_id, gateway_fee_rate, gst_rate
     )
 
 @st.cache_data(show_spinner=False)
-def cached_cash_forecast(df_tx, df_bank, days, gateway_fee_rate, gst_rate, payout_fee):
+def _cached_cash_forecast_impl(_df_tx, _df_bank, days, gateway_fee_rate, gst_rate, payout_fee):
     return get_cash_forecast(
-        df_rp=df_tx,
-        df_bank=df_bank,
+        df_rp=_df_tx,
+        df_bank=_df_bank,
+        days=days,
+        gateway_fee_rate=gateway_fee_rate,
+        gst_rate=gst_rate,
+        payout_fee=payout_fee
+    )
+
+def cached_cash_forecast(df_tx=None, df_bank=None, days=7, gateway_fee_rate=0.02, gst_rate=0.18, payout_fee=5.0, **kwargs):
+    tx = df_tx if df_tx is not None else kwargs.get('_df_tx')
+    bank = df_bank if df_bank is not None else kwargs.get('_df_bank')
+    return _cached_cash_forecast_impl(
+        _df_tx=tx,
+        _df_bank=bank,
         days=days,
         gateway_fee_rate=gateway_fee_rate,
         gst_rate=gst_rate,
@@ -264,10 +279,15 @@ def cached_cash_forecast(df_tx, df_bank, days, gateway_fee_rate, gst_rate, payou
     )
 
 @st.cache_data(show_spinner=False)
-def cached_tax_audit(df_tx, tds_config_json):
+def _cached_tax_audit_impl(_df_tx, tds_config_json):
     import json
     tds_cfg = json.loads(tds_config_json) if isinstance(tds_config_json, str) else tds_config_json
-    return run_tax_audit(df_tx, tds_config=tds_cfg)
+    return run_tax_audit(_df_tx, tds_config=tds_cfg)
+
+def cached_tax_audit(df_tx=None, tds_config_json=None, **kwargs):
+    tx = df_tx if df_tx is not None else kwargs.get('_df_tx')
+    cfg = tds_config_json if tds_config_json is not None else kwargs.get('tds_config_json')
+    return _cached_tax_audit_impl(_df_tx=tx, tds_config_json=cfg)
 
 # ----------------------------------------------------
 # INITIALIZE STATE VARIABLES
@@ -385,11 +405,22 @@ if "sys_tds_config" not in st.session_state:
 
 # Read potential URL query parameters for direct page linking (e.g. from table action buttons)
 query_params = st.query_params
+cur_user = st.session_state.get("user")
 if "audit_tx" in query_params:
     st.session_state.audit_tx = query_params["audit_tx"]
     st.session_state.page = "transactions"
 elif "page" in query_params:
-    st.session_state.page = query_params["page"]
+    param_page = query_params["page"]
+    if cur_user and cur_user.get('role') == 'MERCHANT' and (param_page == 'admin' or str(param_page).startswith('admin_') or param_page == 'payouts'):
+        st.session_state.page = "dashboard"
+        st.query_params.clear()
+        st.query_params.page = "dashboard"
+    elif cur_user and cur_user.get('role') == 'ADMIN' and (not str(param_page).startswith('admin') or param_page in ['admin_reconciliation', 'admin_payouts']):
+        st.session_state.page = "admin"
+        st.query_params.clear()
+        st.query_params.page = "admin"
+    else:
+        st.session_state.page = param_page
 if "explain_tx" in query_params:
     st.session_state.explain_tx = query_params["explain_tx"]
 if "admin_page" in query_params:
@@ -403,24 +434,54 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Try to restore session from cookie
+# Try to restore session from token in query_params or cookie
 if "logged_in" not in st.session_state or not st.session_state.logged_in:
     cookies = st.context.cookies
-    token = cookies.get("session_token")
+    token = query_params.get("token") or cookies.get("session_token")
     if token:
         from src.database import get_user_by_session
         user = get_user_by_session(token)
+        # Security & RBAC guard: If audit_tx or merchant page is being accessed, NEVER allow an ADMIN session to take over
+        if user and user.get('role') == 'ADMIN' and ('audit_tx' in query_params or query_params.get('page') in ['transactions', 'dashboard', 'exceptions', 'settlements', 'bank', 'tax', 'insights', 'forecast', 'settings']):
+            user = None
         if user:
             st.session_state.logged_in = True
             st.session_state.user = user
-            if "audit_tx" in query_params:
-                st.session_state.page = "transactions"
-                st.session_state.audit_tx = query_params["audit_tx"]
-            elif "page" in query_params:
-                st.session_state.page = query_params["page"]
-            else:
-                st.session_state.page = "dashboard" if user['role'] == 'MERCHANT' else "admin"
+            st.session_state.session_token = token
+            is_m = user.get('role') == 'MERCHANT'
+            if is_m:
+                if "audit_tx" in query_params:
+                    st.session_state.page = "transactions"
+                    st.session_state.audit_tx = query_params["audit_tx"]
+                elif "page" in query_params:
+                    param_page = query_params["page"]
+                    if param_page in ["admin", "admin_reconciliation", "admin_payouts", "payouts"] or str(param_page).startswith("admin_"):
+                        st.session_state.page = "dashboard"
+                        st.query_params.clear()
+                        st.query_params.page = "dashboard"
+                    else:
+                        st.session_state.page = param_page
+                else:
+                    st.session_state.page = "dashboard"
+            else:  # ADMIN
+                if "page" in query_params and str(query_params["page"]).startswith("admin"):
+                    param_page = query_params["page"]
+                    if param_page in ["admin_reconciliation", "admin_payouts"]:
+                        st.session_state.page = "admin"
+                        st.query_params.clear()
+                        st.query_params.page = "admin"
+                    else:
+                        st.session_state.page = param_page
+                else:
+                    st.session_state.page = "admin"
             st.session_state.messages = []
+
+if st.session_state.get("logged_in") and st.session_state.get("user") and not st.session_state.get("session_token"):
+    try:
+        from src.database import create_user_session
+        st.session_state.session_token = create_user_session(st.session_state.user['user_id'])
+    except Exception:
+        pass
 
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
@@ -701,9 +762,13 @@ if not st.session_state.logged_in:
                     if user:
                         st.session_state.logged_in = True
                         st.session_state.user = user
-                        st.session_state.page = "dashboard" if user['role'] == 'MERCHANT' else "admin"
+                        target_page = "dashboard" if user['role'] == 'MERCHANT' else "admin"
+                        st.session_state.page = target_page
+                        st.query_params.clear()
+                        st.query_params.page = target_page
                         st.session_state.messages = []  # Clear chat
                         session_token = create_user_session(user['user_id'])
+                        st.session_state.session_token = session_token
                         st.session_state.pending_cookie_token = session_token
                         log_action(user['user_id'], "User Login", f"Successful login. Role: {user['role']}, Merchant: {user['merchant_id']}, Store: {user['store_id']}")
                         st.toast(f"Logged in successfully as {email_clean}!", icon="✅")
@@ -1782,29 +1847,46 @@ st.markdown("""
         border: 1px solid var(--border) !important;
     }
     
-    /* Focus and active input element borders override (replace Streamlit's red/coral theme color) */
-    div[data-baseweb="input"] {
+    /* Focus and active input element borders override (replace Streamlit's red/coral theme color with black) */
+    div[data-baseweb="input"],
+    div[data-baseweb="base-input"] {
         border: 1px solid var(--border) !important;
     }
     div[data-baseweb="input"]:focus-within, 
-    div[data-baseweb="input"]:hover {
+    div[data-baseweb="input"]:hover,
+    div[data-baseweb="base-input"]:focus-within, 
+    div[data-baseweb="base-input"]:hover,
+    div[data-baseweb="input"] > div:focus-within,
+    div[data-baseweb="base-input"] > div:focus-within,
+    div[data-testid="stTextInput"] div[data-baseweb="base-input"]:focus-within,
+    div[data-testid="stTextInput"] div[data-baseweb="input"]:focus-within,
+    div[data-testid="stTextInput"] input:focus,
+    div[data-testid="stForm"] div[data-baseweb="base-input"]:focus-within,
+    div[data-testid="stForm"] div[data-baseweb="input"]:focus-within,
+    div[data-testid="stForm"] input:focus,
+    div[data-baseweb="input"] input:focus,
+    input:focus {
         border-color: #000000 !important;
+        outline-color: #000000 !important;
         box-shadow: 0 0 0 1px #000000 !important;
     }
     div[data-baseweb="textarea"] {
         border: 1px solid var(--border) !important;
     }
     div[data-baseweb="textarea"]:focus-within, 
-    div[data-baseweb="textarea"]:hover {
+    div[data-baseweb="textarea"]:hover,
+    textarea:focus {
         border-color: #000000 !important;
+        outline-color: #000000 !important;
         box-shadow: 0 0 0 1px #000000 !important;
     }
     div[data-testid="stChatInput"] textarea:focus {
         border-color: #000000 !important;
+        outline-color: #000000 !important;
         box-shadow: 0 0 0 1px #000000 !important;
     }
     
-    /* Selectbox active borders override (replace Streamlit's red/coral theme color) */
+    /* Selectbox active borders override */
     div[data-baseweb="select"] {
         border: 1px solid var(--border) !important;
         border-radius: 4px !important;
@@ -1812,7 +1894,31 @@ st.markdown("""
     div[data-baseweb="select"]:focus-within, 
     div[data-baseweb="select"]:hover {
         border-color: #000000 !important;
+        outline-color: #000000 !important;
         box-shadow: 0 0 0 1px #000000 !important;
+    }
+
+    /* In-table Audit Button sleek link styling */
+    div[data-testid*="btn_audit_row_"] button,
+    button[key*="btn_audit_row_"] {
+        background: transparent !important;
+        border: none !important;
+        color: #2563EB !important;
+        font-weight: 600 !important;
+        font-size: 12.5px !important;
+        padding: 2px 4px !important;
+        text-decoration: none !important;
+        box-shadow: none !important;
+        min-height: 28px !important;
+        height: 28px !important;
+        line-height: 24px !important;
+        margin: 0 !important;
+    }
+    div[data-testid*="btn_audit_row_"] button:hover,
+    button[key*="btn_audit_row_"]:hover {
+        color: #1D4ED8 !important;
+        background: #EFF6FF !important;
+        border-radius: 4px !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -2098,10 +2204,8 @@ if user and user.get('role') == 'ADMIN':
     render_sidebar_item("Merchants", "admin_merchants", "♙")
     render_sidebar_item("Stores", "admin_stores", "⌂")
     render_sidebar_item("Transactions", "admin_transactions", "⇄")
-    render_sidebar_item("Reconciliation", "admin_reconciliation", "⇄")
     render_sidebar_item("Exceptions", "admin_exceptions", "⇄")
     render_sidebar_item("Settlements", "admin_settlements", "▣")
-    render_sidebar_item("Payouts", "admin_payouts", "⇄")
     
     st.sidebar.markdown('<div class="sidebar-section-header">SUPPORT</div>', unsafe_allow_html=True)
     # Dynamic open tickets and unread notifications count from database
@@ -2146,7 +2250,6 @@ else:
     render_sidebar_item("Settlements", "settlements", "\u2713", badge='<div class="sidebar-btn-badge-lightning">⚡</div>')
     
     st.sidebar.markdown('<div class="sidebar-section-header">FINANCE</div>', unsafe_allow_html=True)
-    render_sidebar_item("Payouts", "payouts", "\u20B9")
     render_sidebar_item("Bank", "bank", "\u25A3")
     render_sidebar_item("Tax & TDS", "tax", "\u25A4")
     
@@ -2198,6 +2301,7 @@ if user:
         st.session_state.user = None
         st.session_state.page = "dashboard"
         st.session_state.clear_cookie_token = True
+        st.query_params.clear()
         st.rerun()
 
 # ----------------------------------------------------
@@ -2274,7 +2378,18 @@ if "audit_tx" in query_params:
     st.session_state.page = "transactions"
     st.session_state.audit_tx = query_params["audit_tx"]
 elif "page" in query_params and query_params["page"] != st.session_state.page:
-    st.session_state.page = query_params["page"]
+    req_page = query_params["page"]
+    u = st.session_state.get("user")
+    if u and u.get("role") == "MERCHANT" and (req_page == "admin" or str(req_page).startswith("admin_") or req_page == "payouts"):
+        st.session_state.page = "dashboard"
+        st.query_params.clear()
+        st.query_params.page = "dashboard"
+    elif u and u.get("role") == "ADMIN" and (not str(req_page).startswith("admin") or req_page in ["admin_reconciliation", "admin_payouts"]):
+        st.session_state.page = "admin"
+        st.query_params.clear()
+        st.query_params.page = "admin"
+    else:
+        st.session_state.page = req_page
 
 if "notify" in query_params:
     st.toast("🔔 Notifications: Today's closing batch contains 16 unresolved gateway exceptions.", icon="⚠️")
@@ -2474,6 +2589,29 @@ def render_dashboard_date_filter(key_prefix="merchant"):
                 st.rerun()
                 
     return st.session_state[f"{key_prefix}_start_date"], st.session_state[f"{key_prefix}_end_date"]
+
+# ----------------------------------------------------
+# ROLE-BASED ACCESS CONTROL (RBAC) ROUTE GUARD
+# ----------------------------------------------------
+active_user = st.session_state.get("user")
+if active_user:
+    is_merchant = active_user.get("role") == "MERCHANT"
+    is_admin = active_user.get("role") == "ADMIN"
+    cur_page = str(st.session_state.get("page", ""))
+    
+    # Merchants must NEVER see or stay on any admin page or removed pages
+    if is_merchant and (cur_page == "admin" or cur_page.startswith("admin_") or cur_page == "payouts"):
+        st.session_state.page = "dashboard"
+        st.query_params.clear()
+        st.query_params.page = "dashboard"
+        st.rerun()
+        
+    # Admins must NEVER see or stay on merchant pages or removed pages
+    if is_admin and (not cur_page.startswith("admin") or cur_page in ["admin_reconciliation", "admin_payouts"]):
+        st.session_state.page = "admin"
+        st.query_params.clear()
+        st.query_params.page = "admin"
+        st.rerun()
 
 # ----------------------------------------------------
 # PAGE 1: MERCHANT DASHBOARD
@@ -2682,8 +2820,8 @@ if st.session_state.page == "dashboard":
             
     st.markdown("<div style='margin-top: 16px;'></div>", unsafe_allow_html=True)
     
-    # 4. SECONDARY OPERATIONAL TABLES ROW (3 COLUMNS)
-    col_t1, col_t2, col_t3 = st.columns(3)
+    # 4. SECONDARY OPERATIONAL TABLES ROW (2 COLUMNS: EXCEPTIONS & SETTLEMENTS)
+    col_t1, col_t2 = st.columns(2)
     
     # Table 1: Recent Exceptions
     with col_t1:
@@ -2777,47 +2915,6 @@ if st.session_state.page == "dashboard":
                 </thead>
                 <tbody>
                     {settle_rows_html}
-                </tbody>
-            </table>
-        </div>
-        """), unsafe_allow_html=True)
-        
-    # Table 3: Recent Payouts
-    with col_t3:
-        st.markdown(clean_html("""
-        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); height: 210px; box-sizing: border-box; overflow-x: auto; width: 100%;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                <h3 style="font-size: 13px; font-weight: 700; color: #172B4D; font-family: 'Outfit', sans-serif; margin: 0;">Recent Payouts</h3>
-                <a href="?page=payouts" target="_self" style="font-size: 11px; font-weight: 600; color: #2563EB; text-decoration: none;">View All</a>
-            </div>
-            <table style="width: 100%; border-collapse: collapse; font-family: 'Inter', sans-serif; font-size: 11px;">
-                <thead>
-                    <tr>
-                        <th style="padding: 5px 4px; font-size: 9px; font-weight: 700; color: #6B7C93; text-transform: uppercase; border-bottom: 1px solid #E2E8F0; text-align: left;">Payout ID</th>
-                        <th style="padding: 5px 4px; font-size: 9px; font-weight: 700; color: #6B7C93; text-transform: uppercase; border-bottom: 1px solid #E2E8F0; text-align: left;">Date</th>
-                        <th style="padding: 5px 4px; font-size: 9px; font-weight: 700; color: #6B7C93; text-transform: uppercase; border-bottom: 1px solid #E2E8F0; text-align: left;">Amount</th>
-                        <th style="padding: 5px 4px; font-size: 9px; font-weight: 700; color: #6B7C93; text-transform: uppercase; border-bottom: 1px solid #E2E8F0; text-align: left;">Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC;"><strong style="color: #172B4D;">PAYOUT-8421</strong></td>
-                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; color: #6B7C93;">May 28, 2025</td>
-                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; font-weight: 600;">₹7,515.77</td>
-                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC;"><span style="background: #FEF3C7; color: #D97706; border: 1px solid #FDE68A; padding: 1px 6px; border-radius: 4px; font-size: 9.5px; font-weight: 700;">Scheduled</span></td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC;"><strong style="color: #172B4D;">PAYOUT-8420</strong></td>
-                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; color: #6B7C93;">May 27, 2025</td>
-                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC; font-weight: 600;">₹7,215.50</td>
-                        <td style="padding: 6px 4px; border-bottom: 1px solid #F8FAFC;"><span style="background: #FEF3C7; color: #D97706; border: 1px solid #FDE68A; padding: 1px 6px; border-radius: 4px; font-size: 9.5px; font-weight: 700;">Scheduled</span></td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 6px 4px; border-bottom: none;"><strong style="color: #172B4D;">PAYOUT-8419</strong></td>
-                        <td style="padding: 6px 4px; border-bottom: none; color: #6B7C93;">May 26, 2025</td>
-                        <td style="padding: 6px 4px; border-bottom: none; font-weight: 600;">₹6,800.20</td>
-                        <td style="padding: 6px 4px; border-bottom: none;"><span style="background: #ECFDF5; color: #10B981; border: 1px solid #A7F3D0; padding: 1px 6px; border-radius: 4px; font-size: 9.5px; font-weight: 700;">Completed</span></td>
-                    </tr>
                 </tbody>
             </table>
         </div>
@@ -3139,12 +3236,14 @@ elif st.session_state.page == "transactions":
             
         # Draw custom premium HTML Table
         html_rows = ""
+        cur_tok = st.session_state.get("session_token", "")
+        tok_param = f"&token={cur_tok}" if cur_tok else ""
         for idx, row in display_df.iterrows():
             status_badge = get_mismatch_badge_html(row['calculated_exceptions'], row['resolution_status'])
             
             # Action audit deep link
             tx_id = row['transaction_id']
-            action_btn = f'<a href="?page=transactions&audit_tx={tx_id}" target="_self" class="action-link" style="color: #2563EB; font-weight: 600; text-decoration: none;">Audit →</a>'
+            action_btn = f'<a href="?page=transactions&audit_tx={tx_id}{tok_param}" target="_top" class="action-link" style="color: #2563EB; font-weight: 600; text-decoration: none;">Audit →</a>'
             
             html_rows += f"""<tr>
 <td><code style="color: #2563EB;">{tx_id}</code></td>
@@ -3549,89 +3648,6 @@ elif st.session_state.page == "settlements":
     </div>
     """), unsafe_allow_html=True)
 
-# ----------------------------------------------------
-# PAGE 5: PAYOUTS DETAILS
-# ----------------------------------------------------
-elif st.session_state.page == "payouts":
-    st.markdown("<h2>Payouts & Vendor Disbursements</h2>", unsafe_allow_html=True)
-    
-    # Separate payouts summary numbers
-    col_p1, col_p2, col_p3 = st.columns(3)
-    with col_p1:
-        st.markdown("""
-        <div class="kpi-card">
-            <div class="kpi-title">Gross Payouts</div>
-            <div class="kpi-value">₹50,000.00</div>
-            <div class="kpi-desc">Disbursed collections</div>
-        </div>
-        """, unsafe_allow_html=True)
-    with col_p2:
-        st.markdown("""
-        <div class="kpi-card">
-            <div class="kpi-title">Processing Fee & GST</div>
-            <div class="kpi-value">₹5.90</div>
-            <div class="kpi-desc">Flat Rs. 5 fee + 18% GST</div>
-        </div>
-        """, unsafe_allow_html=True)
-    with col_p3:
-        st.markdown("""
-        <div class="kpi-card">
-            <div class="kpi-title">Net Settlement Deducted</div>
-            <div class="kpi-value">₹49,495.00</div>
-            <div class="kpi-desc">Treasury charge deduction</div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-    st.markdown("<br>", unsafe_allow_html=True)
-    
-    # Crucial compliance notice
-    st.markdown("""
-    <div style="background-color: rgba(59, 130, 246, 0.08); border-left: 4px solid #3B82F6; padding: 15px; border-radius: 6px; margin-bottom: 24px;">
-        <h5 style="color: #3B82F6; margin: 0 0 4px 0;">🏛️ Payout Compliance Guideline</h5>
-        <p style="margin: 0; font-size: 13px; font-weight: 500;">
-            Customer collections are <strong>not</strong> subject to transaction-level TDS deductions. TDS rules only apply to vendor payouts and merchant settlements as defined in your corporate policy. Adjust these rates in <strong>Admin Panel → TDS Policy</strong>.
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown("### DISBURSEMENT RECORD")
-    
-    # Filter payouts list
-    payouts_df = df_tx[df_tx['type'] == 'PAYOUT']
-    
-    p_rows = ""
-    for idx, row in payouts_df.iterrows():
-        p_rows += f"""
-        <tr>
-            <td><code>{row['transaction_id']}</code></td>
-            <td>₹{row['amount_inr']:,.2f}</td>
-            <td>₹{row['fee_inr']:,.2f}</td>
-            <td>₹{row['tax_inr']:,.2f}</td>
-            <td>₹{abs(row['settled_amount_inr']):,.2f}</td>
-            <td><span class="status-pill ok">Processed</span></td>
-        </tr>
-        """
-        
-    if not p_rows:
-        p_rows = "<tr><td colspan='6' style='text-align: center; color: var(--text-sec);'>No processed payouts in current batch.</td></tr>"
-        
-    st.markdown(clean_html(f"""<div class="custom-table-container">
-        <table class="custom-table">
-            <thead>
-                <tr>
-                    <th>Payout Reference ID</th>
-                    <th>Gross Amount</th>
-                    <th>Gateway Fee</th>
-                    <th>GST (18%)</th>
-                    <th>Net Treasury Deduction</th>
-                    <th>Status</th>
-                </tr>
-            </thead>
-            <tbody>
-                {p_rows}
-            </tbody>
-        </table>
-    </div>"""), unsafe_allow_html=True)
 
 # ----------------------------------------------------
 # PAGE 6: BANK RECONCILIATION
@@ -5796,149 +5812,6 @@ elif st.session_state.page == "admin_transactions":
         mime="text/csv"
     )
 
-# ----------------------------------------------------
-# ADMIN SUBPAGE: RECONCILIATION COMMAND CENTER
-# ----------------------------------------------------
-elif st.session_state.page == "admin_reconciliation":
-    st.markdown("<h2>⇄ Platform 3-Way Reconciliation Ledger</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='color: var(--text-sec); font-size: 14px;'>Global matching engine status across Razorpay Gateway, OMS Orders, and Bank Settlement Feeds with colored mismatch resolution badges.</p>", unsafe_allow_html=True)
-    
-    # Interactive Filters
-    fl_m, fl_stat, fl_search = st.columns([1, 1.3, 1.7])
-    with fl_m:
-        m_filter = st.selectbox("Merchant", ["All Merchants", "Flipkart", "Amazon"], key="adm_rec_m_filter")
-    with fl_stat:
-        status_filter = st.selectbox(
-            "Mismatch Type & Status",
-            [
-                "All Transactions",
-                "All Needs Review",
-                "🔴 Critical (Amount / Bank Credit)",
-                "🟡 Fee & Tax Mismatches",
-                "🟠 Status Mismatches",
-                "🟢 Auto-Resolved"
-            ],
-            key="adm_rec_stat_filter"
-        )
-    with fl_search:
-        search_query = st.text_input("Search ID", placeholder="Search pay_xxx or order_xxx...", key="adm_rec_search")
-        
-    display_rec = df_tx.copy()
-    if m_filter != "All Merchants":
-        display_rec = display_rec[display_rec['merchant_id'].str.lower() == m_filter.lower()]
-        
-    if status_filter == "🟢 Auto-Resolved":
-        display_rec = display_rec[display_rec['resolution_status'] == 'AUTO_RESOLVED']
-    elif status_filter == "All Needs Review":
-        display_rec = display_rec[display_rec['resolution_status'] == 'NEEDS_REVIEW']
-    elif status_filter == "🔴 Critical (Amount / Bank Credit)":
-        display_rec = display_rec[
-            (display_rec['resolution_status'] == 'NEEDS_REVIEW') & 
-            display_rec['calculated_exceptions'].apply(lambda x: any(k in str(x).upper() for k in ['AMOUNT_MISMATCH', 'BANK_CREDIT_MISSING', 'MISSING_ORDER', 'NOT_FOUND', 'DISPUTE']))
-        ]
-    elif status_filter == "🟡 Fee & Tax Mismatches":
-        display_rec = display_rec[
-            (display_rec['resolution_status'] == 'NEEDS_REVIEW') & 
-            display_rec['calculated_exceptions'].apply(lambda x: any(k in str(x).upper() for k in ['FEE_MISMATCH', 'TAX_MISMATCH', 'GST_MISMATCH', 'BANK_SETTLEMENT_MISMATCH']))
-        ]
-    elif status_filter == "🟠 Status Mismatches":
-        display_rec = display_rec[
-            (display_rec['resolution_status'] == 'NEEDS_REVIEW') & 
-            display_rec['calculated_exceptions'].apply(lambda x: any(k in str(x).upper() for k in ['STATUS_MISMATCH', 'SETTLED_AMOUNT_MISMATCH']))
-        ]
-        
-    if search_query.strip():
-        q = search_query.strip().lower()
-        display_rec = display_rec[
-            display_rec['transaction_id'].str.lower().str.contains(q) |
-            display_rec['order_id'].str.lower().str.contains(q)
-        ]
-        
-    # 5 Styled Cards matching Transactions page
-    col_c1, col_c2, col_c3, col_c4, col_c5 = st.columns(5)
-    with col_c1:
-        st.markdown(clean_html(f"""
-        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 12px;">
-            <div style="font-size: 9.5px; font-weight: 700; color: #6B7C93;">TOTAL PAYMENTS</div>
-            <div style="font-size: 16px; font-weight: 800; color: #172B4D;">{len(display_rec)}</div>
-        </div>
-        """), unsafe_allow_html=True)
-    with col_c2:
-        crit_c = len(display_rec[(display_rec['resolution_status'] == 'NEEDS_REVIEW') & display_rec['calculated_exceptions'].apply(lambda x: any(k in str(x).upper() for k in ['AMOUNT', 'CREDIT', 'ORDER', 'NOT_FOUND']))])
-        st.markdown(clean_html(f"""
-        <div style="background: #FFF5F5; border: 1px solid #FED7D7; border-radius: 6px; padding: 8px 12px;">
-            <div style="font-size: 9.5px; font-weight: 700; color: #EF4444;">🔴 CRITICAL MISMATCH</div>
-            <div style="font-size: 16px; font-weight: 800; color: #EF4444;">{crit_c}</div>
-        </div>
-        """), unsafe_allow_html=True)
-    with col_c3:
-        fee_c = len(display_rec[(display_rec['resolution_status'] == 'NEEDS_REVIEW') & display_rec['calculated_exceptions'].apply(lambda x: any(k in str(x).upper() for k in ['FEE', 'TAX', 'GST', 'SETTLEMENT']))])
-        st.markdown(clean_html(f"""
-        <div style="background: #FEFCE8; border: 1px solid #FEF08A; border-radius: 6px; padding: 8px 12px;">
-            <div style="font-size: 9.5px; font-weight: 700; color: #D97706;">🟡 FEE/TAX MISMATCH</div>
-            <div style="font-size: 16px; font-weight: 800; color: #D97706;">{fee_c}</div>
-        </div>
-        """), unsafe_allow_html=True)
-    with col_c4:
-        stat_c = len(display_rec[(display_rec['resolution_status'] == 'NEEDS_REVIEW') & display_rec['calculated_exceptions'].apply(lambda x: any(k in str(x).upper() for k in ['STATUS']))])
-        st.markdown(clean_html(f"""
-        <div style="background: #FFF7ED; border: 1px solid #FFEDD5; border-radius: 6px; padding: 8px 12px;">
-            <div style="font-size: 9.5px; font-weight: 700; color: #EA580C;">🟠 STATUS MISMATCH</div>
-            <div style="font-size: 16px; font-weight: 800; color: #EA580C;">{stat_c}</div>
-        </div>
-        """), unsafe_allow_html=True)
-    with col_c5:
-        auto_c = len(display_rec[display_rec['resolution_status'] == 'AUTO_RESOLVED'])
-        st.markdown(clean_html(f"""
-        <div style="background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 6px; padding: 8px 12px;">
-            <div style="font-size: 9.5px; font-weight: 700; color: #10B981;">🟢 AUTO RESOLVED</div>
-            <div style="font-size: 16px; font-weight: 800; color: #10B981;">{auto_c}</div>
-        </div>
-        """), unsafe_allow_html=True)
-        
-    st.markdown("<div style='margin-top: 12px;'></div>", unsafe_allow_html=True)
-    
-    html_rec_rows = ""
-    for idx, row in display_rec.iterrows():
-        tx_id = row['transaction_id']
-        ord_id = row.get('order_id') or '—'
-        m_id = str(row['merchant_id']).upper()
-        s_id = str(row['store_id']).split('_')[-1].upper()
-        amt = f"₹{row['amount_inr']:,.2f}"
-        status_badge = get_mismatch_badge_html(row['calculated_exceptions'], row['resolution_status'])
-        exc_pills = get_exception_pills_html(row['calculated_exceptions'])
-        
-        html_rec_rows += f"""<tr>
-<td><code>{tx_id}</code></td>
-<td><code>{ord_id}</code></td>
-<td><span style="font-weight: 600; color: #172B4D;">{m_id}</span> <span style="font-size: 10px; color: #6B7C93;">({s_id})</span></td>
-<td><strong style="color: #172B4D;">{amt}</strong></td>
-<td>{status_badge}</td>
-<td>{exc_pills}</td>
-</tr>"""
-        
-    if not html_rec_rows:
-        html_rec_rows = "<tr><td colspan='6' style='text-align: center; color: #6B7C93; padding: 20px;'>No reconciliation records found matching filters.</td></tr>"
-        
-    st.markdown(clean_html(f"""
-    <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 14px; overflow-x: auto; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
-        <table class="admin-table" style="width: 100%; border-collapse: collapse; font-size: 11px;">
-            <thead>
-                <tr style="border-bottom: 1px solid #E2E8F0;">
-                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Transaction ID</th>
-                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Order ID</th>
-                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Merchant / Store</th>
-                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Amount</th>
-                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Resolution Status</th>
-                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Calculated Exceptions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {html_rec_rows}
-            </tbody>
-        </table>
-    </div>
-    """), unsafe_allow_html=True)
 
 # ----------------------------------------------------
 # ADMIN SUBPAGE: SETTLEMENTS & CLEARING
@@ -6085,83 +5958,6 @@ elif st.session_state.page == "admin_settlements":
         mime="text/csv"
     )
 
-# ----------------------------------------------------
-# ADMIN SUBPAGE: PAYOUTS & BALANCES
-# ----------------------------------------------------
-elif st.session_state.page == "admin_payouts":
-    st.markdown("<h2>⇄ Platform Merchant Payouts & Net Balances</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='color: var(--text-sec); font-size: 14px;'>Withholding TDS calculations, merchant disbursement queues, and platform net settlement transfers.</p>", unsafe_allow_html=True)
-    
-    payout_df = df_tx[df_tx['type'] == 'PAYMENT'].copy()
-    
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.markdown(clean_html(f"""
-        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 10px 14px;">
-            <div style="font-size: 9.5px; font-weight: 700; color: #6B7C93;">TOTAL PAYOUT VOLUME</div>
-            <div style="font-size: 17px; font-weight: 800; color: #172B4D;">₹{payout_df['amount_inr'].sum():,.2f}</div>
-        </div>
-        """), unsafe_allow_html=True)
-    with c2:
-        fee_sum = payout_df['fee_inr'].sum() + payout_df['tax_inr'].sum()
-        st.markdown(clean_html(f"""
-        <div style="background: #FEFCE8; border: 1px solid #FEF08A; border-radius: 6px; padding: 10px 14px;">
-            <div style="font-size: 9.5px; font-weight: 700; color: #D97706;">WITHHELD FEES & GST</div>
-            <div style="font-size: 17px; font-weight: 800; color: #D97706;">₹{fee_sum:,.2f}</div>
-        </div>
-        """), unsafe_allow_html=True)
-    with c3:
-        net_sum = payout_df['settled_amount_inr'].sum()
-        st.markdown(clean_html(f"""
-        <div style="background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 6px; padding: 10px 14px;">
-            <div style="font-size: 9.5px; font-weight: 700; color: #10B981;">NET MERCHANT DISBURSEMENT</div>
-            <div style="font-size: 17px; font-weight: 800; color: #10B981;">₹{net_sum:,.2f}</div>
-        </div>
-        """), unsafe_allow_html=True)
-        
-    st.markdown("<div style='margin-top: 14px;'></div>", unsafe_allow_html=True)
-    
-    html_payout_rows = ""
-    for idx, row in payout_df.iterrows():
-        tx_id = row['transaction_id']
-        m_id = str(row['merchant_id']).upper()
-        s_id = str(row['store_id']).split('_')[-1].upper()
-        gross = f"₹{row['amount_inr']:,.2f}"
-        fee = f"₹{row['fee_inr']:,.2f}"
-        tax = f"₹{row['tax_inr']:,.2f}"
-        net = f"₹{row['settled_amount_inr']:,.2f}"
-        date_exp = row.get('expected_settlement_date', 'T+2 Days')
-        
-        html_payout_rows += f"""<tr>
-<td><code>{tx_id}</code></td>
-<td><strong>{m_id}</strong> <span style="font-size: 10px; color: #6B7C93;">({s_id})</span></td>
-<td style="font-weight: 700; color: #172B4D;">{gross}</td>
-<td style="color: #6B7C93;">{fee}</td>
-<td style="color: #6B7C93;">{tax}</td>
-<td style="font-weight: 700; color: #10B981;">{net}</td>
-<td><span style="background-color: #EFF6FF; color: #3B82F6; border: 1px solid #BFDBFE; padding: 2px 7px; border-radius: 4px; font-size: 10.5px; font-weight: 600;">{date_exp}</span></td>
-</tr>"""
-        
-    st.markdown(clean_html(f"""
-    <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 14px; overflow-x: auto; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
-        <table class="admin-table" style="width: 100%; border-collapse: collapse; font-size: 11px;">
-            <thead>
-                <tr style="border-bottom: 1px solid #E2E8F0;">
-                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Transaction ID</th>
-                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Merchant / Store</th>
-                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Gross Collected</th>
-                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Fee (2%)</th>
-                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">GST (18%)</th>
-                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Net Payable</th>
-                    <th style="padding: 8px 6px; color: #6B7C93; font-weight: 700; font-size: 9.5px; text-transform: uppercase;">Disbursement Target</th>
-                </tr>
-            </thead>
-            <tbody>
-                {html_payout_rows}
-            </tbody>
-        </table>
-    </div>
-    """), unsafe_allow_html=True)
 
 # ----------------------------------------------------
 # ADMIN SUBPAGE: NOTIFICATIONS HUB
