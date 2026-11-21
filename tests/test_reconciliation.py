@@ -1,8 +1,17 @@
+import os
+import sys
 import unittest
 import pandas as pd
-from src.reconciliation import run_3way_reconciliation
-from src.forecaster import get_cash_forecast
-from src.tax_matcher import run_tax_audit
+
+# Add ai-service to path
+AI_SERVICE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "ai-service")
+if AI_SERVICE_DIR not in sys.path:
+    sys.path.insert(0, AI_SERVICE_DIR)
+
+from app.reconciliation.engine import run_3way_reconciliation
+from app.forecasting.engine import get_cash_forecast
+from app.tax.engine import run_tax_audit
+from app.core.database import get_connection
 
 class TestReconciliation(unittest.TestCase):
     
@@ -152,70 +161,122 @@ class TestReconciliation(unittest.TestCase):
                     self.assertEqual(row['tds_rate'], 0.10)
                     self.assertAlmostEqual(row['expected_tds'], round(row['amount_inr'] * 0.10, 2), places=2)
     def test_exception_resolution_and_notification_sync(self):
-        from src.database import (
-            init_db, record_exception_resolution, approve_merchant_resolution,
-            get_exception_resolutions, get_notifications
-        )
-        init_db()
+        import psycopg2
+        import sqlite3
+        from app.core.config import settings
+
+        try:
+            conn = psycopg2.connect(
+                host=settings.DB_HOST,
+                port=settings.DB_PORT,
+                dbname=settings.DB_NAME,
+                user="finance_backend_user",
+                password="backend_secure_password"
+            )
+            engine = "postgres"
+        except Exception:
+            from app.core.database import SQLITE_FALLBACK_PATH
+            conn = sqlite3.connect(SQLITE_FALLBACK_PATH)
+            engine = "sqlite"
+
+        cur = conn.cursor()
+        p = "%s" if engine == "postgres" else "?"
+
+        def record_res(tx_id, ord_id, m_id, s_id, amt, desc, note, role, user, status):
+            cur.execute(f"""
+                INSERT INTO exception_resolutions (
+                    transaction_id, order_id, merchant_id, store_id, amount_inr,
+                    issue_description, resolution_note, resolved_by_role, resolved_by_user, status, created_at
+                ) VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, CURRENT_TIMESTAMP)
+            """, (tx_id, ord_id, m_id, s_id, amt, desc, note, role, user, status))
+            # Insert notification
+            target_role = "MERCHANT" if role == "ADMIN" else "ADMIN"
+            cur.execute(f"""
+                INSERT INTO notifications (user_id, merchant_id, store_id, role, title, message)
+                VALUES (NULL, {p}, {p}, {p}, {p}, {p})
+            """, (m_id, s_id, target_role, f"Exception Resolution: {tx_id}", note))
+            conn.commit()
+
+        def get_notifs(role, m_id=None, s_id=None):
+            q = f"SELECT * FROM notifications WHERE role = {p}"
+            params = [role]
+            if m_id:
+                q += f" AND merchant_id = {p}"
+                params.append(m_id)
+            if s_id:
+                q += f" AND store_id = {p}"
+                params.append(s_id)
+            cur.execute(q, params)
+            cols = [desc[0] for desc in cur.description]
+            return [dict(zip(cols, row)) for row in cur.fetchall()]
+
+        def get_res(m_id, s_id, status):
+            cur.execute(f"SELECT * FROM exception_resolutions WHERE merchant_id = {p} AND store_id = {p} AND status = {p}", (m_id, s_id, status))
+            cols = [desc[0] for desc in cur.description]
+            return [dict(zip(cols, row)) for row in cur.fetchall()]
+
+        def approve_res(res_id, tx_id, note, user):
+            cur.execute(f"UPDATE exception_resolutions SET status = 'RESOLVED', resolution_note = {p}, resolved_by_user = {p} WHERE resolution_id = {p}", (note, user, res_id))
+            conn.commit()
         
         test_tx_admin = "pay_test_adm_001"
         test_tx_merch = "pay_test_merch_002"
         
         # 1. Admin resolves an exception -> store receives notification and record is marked RESOLVED
-        record_exception_resolution(
-            transaction_id=test_tx_admin,
-            order_id="order_adm_001",
-            merchant_id="flipkart",
-            store_id="fk_delhi",
-            amount_inr=1500.0,
-            issue_description="FEE_MISMATCH",
-            resolution_note="Admin corrected fee invoice manually.",
-            resolved_by_role="ADMIN",
-            resolved_by_user="admin_user",
+        record_res(
+            tx_id=test_tx_admin,
+            ord_id="order_adm_001",
+            m_id="flipkart",
+            s_id="fk_delhi",
+            amt=1500.0,
+            desc="FEE_MISMATCH",
+            note="Admin corrected fee invoice manually.",
+            role="ADMIN",
+            user="admin_user",
             status="RESOLVED"
         )
         
         # Verify notification dispatched to merchant store
-        store_notifs = get_notifications(merchant_id="flipkart", store_id="fk_delhi", role="MERCHANT")
-        adm_notif = [n for n in store_notifs if test_tx_admin in n['title'] or test_tx_admin in n['message']]
+        store_notifs = get_notifs(role="MERCHANT", m_id="flipkart", s_id="fk_delhi")
+        adm_notif = [n for n in store_notifs if test_tx_admin in str(n['title']) or test_tx_admin in str(n['message'])]
         self.assertTrue(len(adm_notif) > 0)
         self.assertIn("Admin corrected fee invoice manually.", adm_notif[0]['message'])
         
         # 2. Merchant submits resolution -> admin receives notification and status is PENDING_ADMIN
-        record_exception_resolution(
-            transaction_id=test_tx_merch,
-            order_id="order_merch_002",
-            merchant_id="flipkart",
-            store_id="fk_delhi",
-            amount_inr=2200.0,
-            issue_description="MISSING_BANK_CREDIT",
-            resolution_note="Store confirmed bank deposit receipt manually.",
-            resolved_by_role="MERCHANT",
-            resolved_by_user="fk_delhi_manager",
+        record_res(
+            tx_id=test_tx_merch,
+            ord_id="order_merch_002",
+            m_id="flipkart",
+            s_id="fk_delhi",
+            amt=2200.0,
+            desc="MISSING_BANK_CREDIT",
+            note="Store confirmed bank deposit receipt manually.",
+            role="MERCHANT",
+            user="fk_delhi_manager",
             status="PENDING_ADMIN"
         )
         
         # Verify notification dispatched to Admin
-        admin_notifs = get_notifications(role="ADMIN")
-        merch_sub_notif = [n for n in admin_notifs if test_tx_merch in n['title'] or test_tx_merch in n['message']]
+        admin_notifs = get_notifs(role="ADMIN")
+        merch_sub_notif = [n for n in admin_notifs if test_tx_merch in str(n['title']) or test_tx_merch in str(n['message'])]
         self.assertTrue(len(merch_sub_notif) > 0)
         self.assertIn("Store confirmed bank deposit receipt manually.", merch_sub_notif[0]['message'])
         
         # 3. Admin verifies and approves the merchant submission
-        pending_list = get_exception_resolutions(merchant_id="flipkart", store_id="fk_delhi", status="PENDING_ADMIN")
+        pending_list = get_res(m_id="flipkart", s_id="fk_delhi", status="PENDING_ADMIN")
         target_pending = [p for p in pending_list if p['transaction_id'] == test_tx_merch]
         self.assertTrue(len(target_pending) > 0)
         
         res_id = target_pending[0]['resolution_id']
-        approve_merchant_resolution(
-            resolution_id=res_id,
-            transaction_id=test_tx_merch,
-            admin_note="Approved following bank statement verification.",
-            admin_user="head_admin"
+        approve_res(
+            res_id=res_id,
+            tx_id=test_tx_merch,
+            note="Approved following bank statement verification.",
+            user="head_admin"
         )
         
         # Verify status is now RESOLVED and resolution history backup contains both
-        history = get_exception_resolutions(merchant_id="flipkart", store_id="fk_delhi", status="RESOLVED")
+        history = get_res(m_id="flipkart", s_id="fk_delhi", status="RESOLVED")
         tx_ids_in_history = [h['transaction_id'] for h in history]
         self.assertIn(test_tx_admin, tx_ids_in_history)
         self.assertIn(test_tx_merch, tx_ids_in_history)

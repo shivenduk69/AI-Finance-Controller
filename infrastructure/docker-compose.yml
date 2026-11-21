@@ -1,0 +1,84 @@
+services:
+  # ====================================================================
+  # PostgreSQL 16 with pgvector Extension
+  # ====================================================================
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: finance-postgres
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5434}:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-finance_controller}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres_secure_root_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../database/schema/01_init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+      - ../database/schema/02_roles_and_grants.sql:/docker-entrypoint-initdb.d/02_roles_and_grants.sql:ro
+      - ../database/seeds/01_seed.sql:/docker-entrypoint-initdb.d/03_seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-finance_controller}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - finance-network
+
+  # ====================================================================
+  # Redis 7 In-Memory Cache & Ephemeral State Store
+  # ====================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: finance-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:-redis_secure_password}"]
+    ports:
+      - "${REDIS_PORT:-6380}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis_secure_password}", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - finance-network
+
+  # ====================================================================
+  # RabbitMQ 3 Message Broker with Management UI
+  # ====================================================================
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: finance-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MGMT_PORT:-15672}:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-finance_admin}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-rabbitmq_secure_password}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+    networks:
+      - finance-network
+
+networks:
+  finance-network:
+    external: true
+
+volumes:
+  postgres_data:
+    name: finance_postgres_data
+  redis_data:
+    name: finance_redis_data
+  rabbitmq_data:
+    name: finance_rabbitmq_data

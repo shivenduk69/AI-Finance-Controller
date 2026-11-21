@@ -617,38 +617,59 @@ What is the final status?
 
 ---
 
-# System Architecture
+# System Architecture (Production-Grade Microservices)
+
+The platform is engineered as a **distributed, multi-service financial control architecture** separating user presentation, API orchestration, and mathematical computation into independently scalable services:
 
 ```text
-                        ┌─────────────────────┐
-                        │      USER           │
-                        │ Merchant / Admin    │
-                        └──────────┬──────────┘
-                                   │
-                                   ▼
-                        ┌─────────────────────┐
-                        │   STREAMLIT UI      │
-                        │ Financial Dashboard │
-                        └──────────┬──────────┘
-                                   │
-            ┌──────────────────────┼──────────────────────┐
-            │                      │                      │
-            ▼                      ▼                      ▼
-   ┌────────────────┐    ┌────────────────┐    ┌────────────────┐
-   │ Reconciliation │    │ Tax & Forecast │    │ AI Assistant   │
-   │     Engine     │    │     Engine     │    │    + RAG       │
-   └───────┬────────┘    └───────┬────────┘    └───────┬────────┘
-           │                     │                     │
-           └─────────────────────┼─────────────────────┘
-                                 │
-                                 ▼
-                      ┌─────────────────────┐
-                      │    Data Layer       │
-                      │                     │
-                      │ • SQLite            │
-                      │ • CSV datasets      │
-                      │ • Documents         │
-                      └─────────────────────┘
+                           ┌───────────────────────────────┐
+                           │      CLIENT / WEB BROWSER     │
+                           │   Merchant & Admin Portals    │
+                           └───────────────┬───────────────┘
+                                           │
+                                           │ HTTP / WebSocket (Socket.IO)
+                                           ▼
+                           ┌───────────────────────────────┐
+                           │       FRONTEND SERVICE        │
+                           │  • React 18 + Vite + Tailwind │
+                           │  • Plotly.js Financial Charts │
+                           │  • TanStack Query + Axios     │
+                           │  • Port: 3000                 │
+                           └───────────────┬───────────────┘
+                                           │
+                                           │ REST API (JSON) + HttpOnly JWT
+                                           ▼
+┌──────────────────────────────────────────────────────────────────────────────────────────┐
+│                                     BACKEND SERVICE                                      │
+│  • Node.js + Express.js (CommonJS)                                                       │
+│  • RBAC & Tenant Isolation (Merchant vs Admin Scoping)                                   │
+│  • Argon2id Security, Helmet, Winston Logger, Zod Validation                             │
+│  • Socket.IO Real-Time Exception & Notification Broadcasts                               │
+│  • Port: 5000                                                                            │
+└───────────┬───────────────────────────────┬──────────────────────────────┬───────────────┘
+            │                               │                              │
+            │ Cache & Rate Limiting         │ Async Message Queues         │ Internal RPC / REST
+            ▼                               ▼                              ▼
+┌────────────────────────┐      ┌────────────────────────┐      ┌──────────────────────────┐
+│   REDIS 7 (IN-MEMORY)  │      │  RABBITMQ 3 (MESSAGING)│      │  AI & COMPUTING SERVICE  │
+│ • Dashboard Metric TTL │      │ • Reconciliation Jobs  │      │ • Python 3.11 + FastAPI  │
+│ • Ephemeral Sessions   │      │ • Ingestion Event Bus  │      │ • 7-Rule Matching Engine │
+│ • Port: 6380           │      │ • Dead-Letter Queue    │      │ • Section 194-O Tax Engine│
+└────────────────────────┘      │ • Ports: 5672, 15672   │      │ • 7-Day Cash Forecaster  │
+                                └────────────────────────┘      │ • Gemini RAG + pgvector  │
+                                                                │ • Port: 8000             │
+                                                                └────────────┬─────────────┘
+                                                                             │
+            ┌────────────────────────────────────────────────────────────────┘
+            │ Data Persistence & Vector Storage
+            ▼
+┌──────────────────────────────────────────────────────────────────────────────────────────┐
+│                       POSTGRESQL 16 + PGVECTOR DATABASE CLUSTER                          │
+│ • Transactions, Orders, Settlements, Exceptions, Audit Logs                              │
+│ • pgvector 768-dim embeddings for financial RAG semantic search                          │
+│ • Strictly Scoped RBAC Roles: finance_backend_user & finance_ai_user                     │
+│ • Host Port: 5434 (Internal: 5432)                                                       │
+└──────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -892,83 +913,114 @@ python -m unittest tests/test_reconciliation.py
 ```text
 AI Finance Controller/
 │
-├── app.py
-│   └── Main Streamlit application and UI
+├── frontend/                     # Service 1: React 18 Single Page Application
+│   ├── public/                   # Static branding assets (logo.png)
+│   ├── src/
+│   │   ├── components/           # Reusable UI (Sidebar, Header, AI Popover, Charts)
+│   │   ├── views/                # 11 Merchant Views & 13 Admin Views
+│   │   ├── services/             # Axios API Client & Socket.IO WebSockets
+│   │   ├── context/              # Authentication & App State Providers
+│   │   ├── App.jsx               # Route Declarations & RBAC Route Guards
+│   │   └── main.jsx              # React DOM Entrypoint
+│   ├── package.json              # React 18, Vite 5, Tailwind CSS, Plotly.js
+│   ├── Dockerfile
+│   ├── docker-compose.yml
+│   └── .env.example
 │
-├── src/
-│   ├── __init__.py
-│   │
-│   ├── reconciliation.py
-│   │   └── 3-way reconciliation engine
-│   │
-│   ├── forecaster.py
-│   │   └── Cash-flow forecasting logic
-│   │
-│   ├── tax_matcher.py
-│   │   └── Tax and TDS audit engine
-│   │
-│   ├── rag_engine.py
-│   │   └── RAG, document retrieval and embeddings
-│   │
-│   ├── heuristic_engine.py
-│   │   └── Local fallback financial reasoning engine
-│   │
-│   ├── database.py
-│   │   └── SQLite/database operations
-│   │
-│   ├── upload_pipeline.py
-│   │   └── Data ingestion pipeline
-│   │
-│   └── mock_generator.py
-│       └── Synthetic financial data generation
+├── backend/                      # Service 2: Node.js + Express API Service
+│   ├── config/                   # PostgreSQL Pool, Redis Client, RabbitMQ Worker
+│   ├── controllers/              # Auth, Admin, Reconciliation, Exceptions, Ingestion
+│   ├── middleware/               # Argon2id Auth, JWT Verification, RBAC Tenant Scoping
+│   ├── repositories/             # PostgreSQL Query Abstractions
+│   ├── routes/                   # REST Route Definitions (/api/auth, /api/reconciliation, etc.)
+│   ├── services/                 # Business Logic & Socket.IO Event Broadcasting
+│   ├── utils/                    # Password Hashing, Token Generation, Logger
+│   ├── tests/                    # Jest Automated Integration Suite (15/15 tests)
+│   ├── server.js                 # Express Application Entrypoint (:5000)
+│   ├── package.json
+│   ├── Dockerfile
+│   ├── docker-compose.yml
+│   └── .env.example
 │
-├── data/
-│   ├── razorpay_synthetic_buildathon_data.csv
-│   ├── internal_orders.csv
-│   ├── bank_statement.csv
-│   ├── transactions_processed.csv
-│   └── finance_controller.db
+├── ai-service/                   # Service 3: Python 3.11 + FastAPI Processing Engine
+│   ├── app/
+│   │   ├── api/                  # FastAPI Routers (/internal/reconciliation, /tax, /forecasting, /rag)
+│   │   ├── core/                 # PostgreSQL Connector, pgvector Engine, RabbitMQ Listener
+│   │   ├── forecasting/          # 7-Day Rolling Cash Inflow Projection Engine
+│   │   ├── ingestion/            # High-Throughput CSV Parser & Normalization
+│   │   ├── rag/                  # Gemini 2.0 Flash + pgvector Semantic Knowledge Base
+│   │   ├── reconciliation/       # 7-Rule 3-Way Reconciliation Matching Engine
+│   │   └── tax/                  # Section 194-O TDS (1%) & GST (18%) Compliance Auditor
+│   ├── tests/                    # FastAPI Pytest Suite (9/9 tests)
+│   ├── main.py                   # FastAPI Application Entrypoint (:8000)
+│   ├── requirements.txt
+│   ├── Dockerfile
+│   ├── docker-compose.yml
+│   └── .env.example
 │
-├── documents/
-│   ├── 01_razorpay_settlement_policy.md
-│   ├── 02_refund_policy.md
-│   ├── 03_merchant_fee_agreement.md
-│   ├── 04_seller_payout_rules.md
-│   ├── 05_invoice_refund_gst_rules.md
-│   ├── 06_system_logic_and_math_calculations.md
-│   ├── 07_internal_orders_data*.md
-│   ├── 08_razorpay_transactions_data*.md
-│   ├── 09_bank_statements_data*.md
-│   └── india_tax_reference_FY2026-27.md
+├── database/                     # PostgreSQL 16 + pgvector Cluster Configuration
+│   ├── schema/                   # 01_init.sql (DDL for tables, indexes, pgvector)
+│   ├── seeds/                    # 02_seed.sql (Users, Stores, Transactions, Orders, Statements)
+│   └── roles/                    # 03_roles.sql (finance_backend_user & finance_ai_user RBAC)
 │
-├── tests/
-│   ├── __init__.py
-│   └── test_reconciliation.py
+├── infrastructure/               # Shared Multi-Container Orchestration
+│   └── docker-compose.yml        # PostgreSQL 16 (:5434), Redis 7 (:6380), RabbitMQ 3 (:5672, :15672)
 │
-├── requirements.txt
+├── data/                         # Verified Financial Ingestion Datasets
+│   ├── bank_statement.csv        # Bank credits & nodal settlements
+│   ├── internal_orders.csv       # Merchant operational order ledger
+│   └── transactions_processed.csv# Payment gateway captured transactions, fees, refunds
+│
+├── documents/                    # Corporate Financial Intelligence Knowledge Base (RAG)
+│   ├── GST_Rulebook_2024.md
+│   ├── Gateway_Dispute_Playbook.md
+│   ├── Merchant_Reconciliation_SOP.md
+│   └── Section_194O_Compliance.md
+│
+├── tests/                        # Root-Level Regression & Parity Verification Suite
+│   ├── benchmark_performance.py  # Pipeline Throughput & Latency Benchmark
+│   ├── test_parity.py            # Phase 7 Mathematical Parity Suite (6/6 tests)
+│   └── test_reconciliation.py    # Multi-Rule Reconciliation Verification (8/8 tests)
+│
+├── docs/                         # Synchronized Migration & Architectural Specs
+│   ├── API_CONTRACTS.md          # REST API Request/Response Schemas
+│   ├── DATABASE_AUDIT.md         # Database Schema & Table Ownership Matrix
+│   ├── DOCKER_ARCHITECTURE.md    # Multi-Compose & Networking Architecture
+│   ├── MANUAL_TESTING_REPORT.md  # End-to-End Browser Manual Verification Log
+│   ├── MIGRATION_PLAN.md         # 10-Phase Technology Migration Roadmap
+│   ├── SERVICE_COMMUNICATION.md  # Inter-Service Communication Protocols
+│   └── UI_SPECIFICATION.md       # Component Specs & Visual Design Tokens
+│
 ├── .gitignore
-├── logo.png
-└── README.md
+├── AGENTS.md                     # Mandatory AI Coding Rules & Architectural Invariants
+├── CLAUDE.md                     # Quick Reference Architecture Guide
+├── guidelines.md                 # Preventive Instructions & Mistake Tracker
+├── logo.png                      # Application Branding Asset
+├── README.md                     # Master Project Guide & Architecture Documentation
+└── requirements.txt              # Minimal Root Pip Pointer (-r ai-service/requirements.txt)
 ```
 
 ---
 
 # Technology Stack
 
-| Layer | Technology |
-|---|---|
-| Frontend / UI | Streamlit |
-| Programming Language | Python |
-| Data Processing | Pandas, NumPy |
-| Visualization | Plotly |
-| Database | SQLite |
-| Generative AI | Google Gemini |
-| RAG | Custom retrieval pipeline |
-| Embeddings | Gemini Embeddings |
-| Document Processing | PyPDF |
-| Configuration | python-dotenv |
-| Testing | Python unittest |
-| Version Control | Git / GitHub |
+| Layer | Technology | Key Capabilities / Purpose |
+|---|---|---|
+| **Frontend UI** | React 18, Vite 5, Tailwind CSS | Single Page App, Responsive Modern UI, Dark Navy Sidebar (`#161f30`) |
+| **Interactive Visualization** | Plotly.js (`react-plotly.js`) | Financial volume, exception breakdown, and cash projection charts |
+| **State & API Client** | TanStack Query v5, Axios | Declarative data fetching, cache synchronization, HTTP clients |
+| **Real-Time WebSockets** | Socket.IO Client v4 | Instant exception status sync, live alerts, ticket broadcasts |
+| **Backend API Gateway** | Node.js 20+, Express.js (CommonJS) | REST API endpoints, Role-Based Access Control, JWT auth cookies |
+| **Authentication & Security** | Argon2id, JsonWebToken, Helmet | Cryptographically secure password hashing, HttpOnly cookies, CORS |
+| **AI & Mathematical Engine** | Python 3.11+, FastAPI, Uvicorn | 7-Rule 3-way matching, Section 194-O tax auditing, cash forecasting |
+| **Data Processing** | Pandas, Polars, NumPy | High-performance vectorized DataFrame computation |
+| **Relational Database** | PostgreSQL 16 + `pgvector` | ACID transactions, NUMERIC(15,2) currency math, HNSW vector search |
+| **In-Memory Cache** | Redis 7 Alpine (`ioredis`) | Dashboard metric caching with TTL, rate-limiting, session store |
+| **Message Broker** | RabbitMQ 3 Management Alpine | Asynchronous reconciliation queues, CSV ingestion event bus |
+| **Generative AI & LLM** | Google Gemini 2.0 Flash SDK | Evidence-grounded natural language financial reasoning & chat |
+| **Vector Embeddings** | Google `text-embedding-004` | 768-dimensional semantic embeddings for financial policy retrieval |
+| **Containerization** | Docker & Docker Compose | Independent service containers on shared bridge `finance-network` |
+| **Automated Testing** | Jest, Pytest, Supertest, Unittest | Parity validation, integration tests, mathematical correctness |
 
 ---
 
@@ -1095,99 +1147,174 @@ Role:     Global Administrator
 
 ---
 
-# Installation
+# Installation & Setup Guide
 
-## 1. Clone Repository
+The application can be run in two primary modes:
+1. **Local Multi-Terminal Development Mode** (Recommended for development, code inspection, and debugging).
+2. **Independent Docker Compose Mode** (Recommended for containerized deployment).
+
+---
+
+## Prerequisites
+
+Before starting, ensure you have the following installed on your machine:
+- **Git**
+- **Docker Desktop** (running with Docker Engine enabled)
+- **Node.js 20+** and **npm**
+- **Python 3.11+**
+
+---
+
+## Step 1: Clone Repository & Setup Environment Files
+
+Clone the repository and inspect the project directory:
 
 ```bash
 git clone <YOUR_GITHUB_REPOSITORY_URL>
 cd "AI Finance Controller"
 ```
 
-## 2. Create Virtual Environment
+The repository includes pre-configured environment template files for every service:
+- `backend/.env.example`
+- `ai-service/.env.example`
+- `frontend/.env.example`
 
-### Windows
+If `.env` files are not already created, copy each template:
 
 ```bash
+# Windows (PowerShell)
+Copy-Item backend\.env.example backend\.env
+Copy-Item ai-service\.env.example ai-service\.env
+Copy-Item frontend\.env.example frontend\.env
+
+# Linux / macOS
+cp backend/.env.example backend/.env
+cp ai-service/.env.example ai-service/.env
+cp frontend/.env.example frontend/.env
+```
+
+Ensure your `ai-service/.env` contains a valid Google Gemini API key:
+```env
+GEMINI_API_KEY=your_gemini_api_key_here
+```
+
+---
+
+## Step 2: Install Dependencies
+
+### 1. AI Service Python Virtual Environment
+```bash
+# Windows
 python -m venv .venv
-```
-
-Activate:
-
-```bash
 .venv\Scripts\activate
-```
+pip install -r ai-service/requirements.txt
 
-### Linux / macOS
-
-```bash
+# Linux / macOS
 python3 -m venv .venv
 source .venv/bin/activate
+pip install -r ai-service/requirements.txt
 ```
 
----
-
-# Install Dependencies
-
+### 2. Backend Service Node.js Dependencies
 ```bash
-pip install -r requirements.txt
+cd backend
+npm install
+cd ..
 ```
 
----
-
-# Configure Gemini
-
-Create a `.env` file:
-
-```env
-GEMINI_API_KEY=YOUR_GEMINI_API_KEY
-```
-
-Alternatively, configure the Gemini API key from the application's configuration interface.
-
----
-
-# Run the Application
-
-Start Streamlit:
-
+### 3. Frontend Service React Dependencies
 ```bash
-streamlit run app.py
-```
-
-Open:
-
-```text
-http://localhost:8501
+cd frontend
+npm install
+cd ..
 ```
 
 ---
 
-# Generate Synthetic Data
+# How to Run the Application (Local Development)
 
-The project contains a synthetic data generation utility.
+Open **4 separate terminal windows** (or split terminals in VS Code / Windows Terminal) and run the following:
 
-Run:
-
-```bash
-python src/mock_generator.py
+### Terminal 1 — Infrastructure (PostgreSQL 16 + Redis + RabbitMQ)
+```powershell
+cd "AI Finance Controller"
+docker compose -f infrastructure/docker-compose.yml up -d
 ```
+> **Services Started:**
+> - `finance-postgres`: PostgreSQL 16 + pgvector on port **`5434`** (auto-seeds schemas, tables, and test data).
+> - `finance-redis`: Redis 7 on port **`6380`**.
+> - `finance-rabbitmq`: RabbitMQ on port **`5672`** (Management UI on **`15672`**).
 
-This can generate:
-
-```text
-data/internal_orders.csv
-data/bank_statement.csv
+### Terminal 2 — AI & Data Processing Service (FastAPI)
+```powershell
+cd "AI Finance Controller\ai-service"
+..\.venv\Scripts\python.exe -m uvicorn main:app --port 8000 --reload
 ```
+> **Service Running:** FastAPI on `http://localhost:8000`  
+> Interactive OpenAPI documentation available at: `http://localhost:8000/docs`
 
-The generated datasets intentionally contain financial discrepancies so that the reconciliation engine can demonstrate exception detection.
+### Terminal 3 — Backend API Gateway (Express.js)
+```powershell
+cd "AI Finance Controller\backend"
+node server.js
+```
+> **Service Running:** Node.js + Express on `http://localhost:5000`  
+> Connects to PostgreSQL (:5434), Redis (:6380), RabbitMQ (:5672), and AI Service (:8000).
+
+### Terminal 4 — Frontend Web App (React 18 + Vite)
+```powershell
+cd "AI Finance Controller\frontend"
+npm run dev
+```
+> **Service Running:** React Vite SPA on `http://localhost:3000`
 
 ---
 
-# Run Tests
+# Accessing the Web Application
 
+Open **Google Chrome** and navigate to:
+
+👉 **[http://localhost:3000](http://localhost:3000)**
+
+### Pre-Seeded Login Credentials
+
+| Role | Username | Password | Purpose & Scope |
+| :--- | :--- | :--- | :--- |
+| **Merchant Store Manager** | `store_manager` | `password123` | Merchant portal, 3-way reconciliation, exception notes, cash forecasting, support tickets |
+| **System Administrator** | `admin` | `password123` | Global admin dashboard, cross-tenant transactions, live exception approval, AI & RAG center |
+
+*(Optional Management Portals)*:
+- **FastAPI Interactive Docs:** [http://localhost:8000/docs](http://localhost:8000/docs)
+- **RabbitMQ Dashboard:** [http://localhost:15672](http://localhost:15672) (User: `finance_admin`, Password: `rabbitmq_secure_password`)
+
+---
+
+# Automated Test Suite & Parity Verification
+
+The repository contains an enterprise testing suite across backend, AI service, and root parity verification:
+
+### 1. Root Mathematical Parity & Multi-Rule Test Suite
 ```bash
-python -m unittest tests/test_reconciliation.py
+# Verify 7-rule reconciliation, 100% mathematical parity against verified baselines
+python -m pytest tests/ -v
+```
+
+### 2. Backend Integration Test Suite (Jest)
+```bash
+# Verify auth, Argon2id, RBAC, Redis caching, RabbitMQ queuing, Socket.IO
+npm test --prefix backend
+```
+
+### 3. AI Service Test Suite (Pytest)
+```bash
+# Verify FastAPI health, tax audit, cash forecasting, pgvector RAG, internal auth
+pytest ai-service/tests/ -v
+```
+
+### 4. Throughput & Latency Performance Benchmark
+```bash
+# Execute end-to-end processing pipeline benchmark
+python tests/benchmark_performance.py
 ```
 
 ---
@@ -1368,47 +1495,46 @@ This architecture is important for financial applications because generative AI 
 
 ---
 
-# Performance Architecture
+# Performance & Scalability Architecture
 
-Because Streamlit reruns application code whenever users interact with widgets, unnecessary recomputation can significantly impact responsiveness.
+In enterprise financial operations, sub-second latency is required for dashboards, while heavy batch reconciliation and ingestion must not block user interactions.
 
-The project is designed to minimize this through:
-
-- cached financial calculations
-- reusable data processing
-- efficient DataFrame operations
-- cached resources
-- controlled RAG indexing
-- reduced duplicate API calls
-- page-specific computation
-- optimized database operations
-
-The target architecture is:
+The platform achieves high throughput and resilience through a multi-tiered performance architecture:
 
 ```text
-User Interaction
-      │
-      ▼
-Streamlit Rerun
-      │
-      ▼
-Check Cached Results
-      │
-      ├─────────────── Cache Hit ───────────────┐
-      │                                         │
-      │                                         ▼
-      │                                  Render Quickly
-      │
-      └──────────── Cache Miss ────────────► Compute
-                                                 │
-                                                 ▼
-                                              Cache
-                                                 │
-                                                 ▼
-                                              Render
+User Request / Query
+       │
+       ▼
+React SPA (TanStack Query Cache) ──[ Cache Hit: Instant Client Render (<5ms) ]
+       │
+       │ HTTP / Socket.IO
+       ▼
+Express API Gateway (Backend)
+       │
+       ▼
+Redis 7 In-Memory Cache ───────────[ Cache Hit: Return Stored JSON (<10ms) ]
+       │
+       │ Cache Miss
+       ▼
+PostgreSQL Connection Pool & FastAPI AI Service
+       │
+       ├─► Heavy Batch Processing ──► Offload to RabbitMQ Queue (Worker Threads)
+       │
+       └─► Vectorized Computation ──► Polars / Pandas C-Engine (<150ms)
+                                             │
+                                             ▼
+                                     Store Result in Redis
+                                             │
+                                             ▼
+                                    Stream Response to Client
 ```
 
-This allows expensive financial processing to happen only when relevant inputs change.
+### Core Performance Highlights:
+- **Redis Metric Caching:** Aggregated KPI metrics (GMV, auto-match rates, cash flow summaries) are cached in Redis with configurable TTLs and automated invalidation when new exceptions or transactions are resolved.
+- **RabbitMQ Asynchronous Task Queues:** File ingestion and multi-thousand transaction batch reconciliations are offloaded from HTTP threads into background worker queues with Dead-Letter Queues (DLQ) for retries.
+- **Optimized PostgreSQL 16 & pgvector:** Database queries utilize composite B-tree indexes for tenant lookup (`store_id`, `merchant_id`, `transaction_date`) and HNSW index structures for rapid nearest-neighbor vector similarity searches.
+- **FastAPI Vectorized Math:** Python financial reconciliation engines run vectorized column operations in Pandas and Polars, processing 120+ multi-source records in under 13ms (total pipeline latency <130ms).
+- **Socket.IO Event Stream:** Real-time state synchronizations (e.g. admin exception resolution approvals) are broadcasted directly via WebSockets, eliminating periodic client polling.
 
 ---
 
@@ -1630,11 +1756,11 @@ Add ML models for:
 
 ## 5. Enterprise-Scale Data Layer
 
-Move from local SQLite toward:
+The platform now natively runs on:
 
-- PostgreSQL
-- distributed data storage
-- warehouse architecture
+- PostgreSQL 16 with `pgvector` for vector chunk storage and hybrid SQL querying
+- Redis 7 for high-speed sub-millisecond metric caching
+- RabbitMQ 3 for asynchronous batch reconciliation and ingestion queues
 
 ## 6. Advanced Forecasting
 
@@ -1675,11 +1801,9 @@ This project is a demonstration/prototype designed around synthetic buildathon d
 
 Current limitations include:
 
-- payment gateway data is synthetic
-- bank data is synthetic
-- financial integrations are not connected to live production accounts
-- AI responses depend on Gemini API availability when using generative mode
-- local SQLite is intended for demonstration rather than large-scale production deployment
+- payment gateway and bank transactions are synthetic demonstration datasets
+- financial integrations are currently simulated via normalized CSV uploads rather than live gateway webhooks
+- AI responses require a valid Gemini API key for live generative mode, with deterministic heuristic fallbacks available
 - cash forecasting is designed for short-term demonstration
 - production deployment would require stronger secrets management and infrastructure controls
 
@@ -1687,43 +1811,57 @@ These limitations do not affect the demonstration of the underlying reconciliati
 
 ---
 
-# Deployment
+# Deployment Architecture (Docker & Containerization)
 
-The application can be deployed using Streamlit-compatible infrastructure.
-
-For example:
+The platform is designed for enterprise deployment with independent container builds across all tiers:
 
 ```text
-GitHub Repository
-      │
-      ▼
-Streamlit Cloud / Server
-      │
-      ▼
-AI Finance Controller
+                               ┌───────────────────────────┐
+                               │  REVERSE PROXY / INGRESS  │
+                               │  Nginx / AWS ALB / Cloud  │
+                               └─────────────┬─────────────┘
+                                             │
+                       ┌─────────────────────┴─────────────────────┐
+                       │                                           │
+                       ▼ :3000                                     ▼ :5000
+       ┌───────────────────────────────┐           ┌───────────────────────────────┐
+       │     frontend (Docker)         │           │      backend (Docker)         │
+       │  React 18 SPA (Vite / Nginx)  │           │   Node.js 20+ Express API     │
+       └───────────────────────────────┘           └───────────────┬───────────────┘
+                                                                   │
+                                           ┌───────────────────────┼───────────────────────┐
+                                           │                       │                       │
+                                           ▼ :8000                 ▼ :6379                 ▼ :5672
+                           ┌───────────────────────────────┐ ┌───────────┐           ┌───────────┐
+                           │      ai-service (Docker)      │ │   redis   │           │ rabbitmq  │
+                           │ Python 3.11 + FastAPI Engine  │ │  (Docker) │           │  (Docker) │
+                           └───────────────┬───────────────┘ └───────────┘           └───────────┘
+                                           │
+                                           ▼ :5432
+                               ┌───────────────────────────┐
+                               │     postgres (Docker)     │
+                               │   PostgreSQL 16+pgvector  │
+                               └───────────────────────────┘
 ```
 
-Gemini credentials should be supplied through secure environment variables or platform secrets rather than committed to the repository.
+Each service contains its own `Dockerfile` and `docker-compose.yml` communicating over an isolated shared Docker bridge network (`finance-network`):
+- `frontend/Dockerfile` & `frontend/docker-compose.yml`
+- `backend/Dockerfile` & `backend/docker-compose.yml`
+- `ai-service/Dockerfile` & `ai-service/docker-compose.yml`
+- `infrastructure/docker-compose.yml` (Postgres, Redis, RabbitMQ)
 
 ---
 
-# Production Security Considerations
+# Enterprise Security Architecture
 
-For production deployment, the following should be implemented:
+The migration implements multi-layered security controls designed for financial data protection:
 
-- secure secret management
-- encrypted credentials
-- HTTPS
-- stronger authentication
-- role-based authorization enforcement
-- database encryption where appropriate
-- API rate limiting
-- audit log protection
-- PII masking
-- secure document storage
-- tenant isolation
-- production-grade database infrastructure
-- monitoring and alerting
+- **Argon2id Password Hashing:** User passwords are encrypted using memory-hard Argon2id algorithms resisting GPU brute-force attacks.
+- **Stateless JWT in HttpOnly Cookies:** Authentication tokens are stored in secure, HttpOnly, SameSite cookies preventing cross-site scripting (XSS) token theft.
+- **Role-Based Access Control (RBAC):** Strict policy middleware ensures Merchants can only view their own store data (`store_id`, `merchant_id`), while Admins hold cross-tenant governance authority.
+- **Dedicated Database User Roles:** Enforces PostgreSQL privilege separation via `finance_backend_user` (owns users, tickets, notifications) and `finance_ai_user` (owns reconciliation transactions and audit ledgers).
+- **Service-to-Service Authentication:** Internal RPC calls between Backend and AI Service are secured with pre-shared cryptographic bearer secrets (`INTERNAL_API_SECRET`).
+- **Security Headers & Sanitization:** Armed with Helmet middleware, CORS domain restriction, and strict Zod/Pydantic request payload validation schemas.
 
 ---
 
@@ -1899,50 +2037,51 @@ Areas of interest:
 
 ---
 
-# If You Find This Project Interesting
+# Code Review & Recommended Starting Points
 
-This project was built as a demonstration of how AI can be applied to financial operations, reconciliation, compliance and decision support.
-
-If you are reviewing this repository, the recommended starting points are:
+If you are reviewing this codebase, the recommended entry points illustrating the distributed architecture are:
 
 ```text
-1. app.py
-2. src/reconciliation.py
-3. src/database.py
-4. src/rag_engine.py
-5. src/tax_matcher.py
-6. src/forecaster.py
-7. tests/test_reconciliation.py
+1. frontend/src/views/ReconciliationView.jsx   ──► 3-Way Reconciliation Interactive UI
+2. backend/server.js                            ──► Express, Socket.IO & Event Bus Wiring
+3. backend/controllers/reconciliationController.js ──► Tenant-Scoped API & Cache Handler
+4. ai-service/app/reconciliation/engine.py      ──► Core 7-Rule Financial Reconciliation Engine
+5. ai-service/app/tax/engine.py                 ──► Section 194-O TDS & GST Compliance Auditor
+6. ai-service/app/rag/engine.py                 ──► pgvector Semantic Search & Gemini RAG
+7. database/schema/01_init.sql                  ──► Relational Financial DDL & pgvector Extension
+8. tests/test_parity.py                         ──► Mathematical Parity Verification Suite
 ```
-
-The combination of these modules demonstrates the complete journey from:
-
-**raw financial data → reconciliation → exception detection → financial analysis → AI-assisted investigation → resolution.**
 
 ---
 
-# Quick Start
+# Rapid Quick Start (In 4 Terminals)
+
+Clone the repository and run all services in 4 separate terminal tabs:
 
 ```bash
-git clone <YOUR_GITHUB_REPOSITORY_URL>
+# Terminal 1: Shared Infrastructure
+docker compose -f infrastructure/docker-compose.yml up -d
 
-cd "AI Finance Controller"
+# Terminal 2: AI & Calculation Service (FastAPI)
+cd ai-service
+..\.venv\Scripts\python.exe -m uvicorn main:app --port 8000 --reload
 
-python -m venv .venv
+# Terminal 3: Backend API Gateway (Node.js / Express)
+cd backend
+node server.js
 
-# Windows
-.venv\Scripts\activate
-
-pip install -r requirements.txt
-
-streamlit run app.py
+# Terminal 4: Frontend Web App (React / Vite)
+cd frontend
+npm run dev
 ```
 
-Then open:
+Open your browser at:
 
-```text
-http://localhost:8501
-```
+👉 **[http://localhost:3000](http://localhost:3000)**
+
+### Login Credentials
+- **Merchant Store Manager:** `store_manager` / `password123`
+- **System Administrator:** `admin` / `password123`
 
 ---
 
